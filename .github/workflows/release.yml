@@ -1,0 +1,43 @@
+# Signed + notarized release on tag push (v*).
+# Required repo secrets:
+#   MACOS_CERT_P12        - base64 of the Developer ID Application .p12
+#   MACOS_CERT_PASSWORD   - .p12 password
+#   NOTARY_KEY_ID / NOTARY_KEY_ISSUER / NOTARY_KEY_P8 - App Store Connect API key
+name: release
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import signing certificate
+        run: |
+          echo "$MACOS_CERT_P12" | base64 -d > cert.p12
+          security create-keychain -p ci build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p ci build.keychain
+          security import cert.p12 -k build.keychain -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      - name: Build + sign
+        run: ./tray/build.sh
+      - name: Notarize + staple
+        run: |
+          echo "$NOTARY_KEY_P8" > notary.p8
+          ditto -c -k --keepParent tray/build/Claudes.app Claudes.zip
+          xcrun notarytool submit Claudes.zip --key notary.p8 \
+            --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_KEY_ISSUER" --wait
+          xcrun stapler staple tray/build/Claudes.app
+          ditto -c -k --keepParent tray/build/Claudes.app Claudes.zip
+        env:
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_KEY_ISSUER: ${{ secrets.NOTARY_KEY_ISSUER }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Claudes.zip
