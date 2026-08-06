@@ -28,6 +28,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var latestVersion: String?
     private var latestAssetURL: URL?
     private var selfUpdating = false
+    private var appsDirSource: DispatchSourceFileSystemObject?
+    private var repatchDebounce: DispatchWorkItem?
 
     private var autoRepatchEnabled: Bool {
         get { UserDefaults.standard.object(forKey: "autoRepatch") as? Bool ?? true }
@@ -54,9 +56,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         statusItem.menu = menu
 
-        // Auto-repatch: shortly after launch, then every 30 minutes.
+        // Auto-repatch: event-driven — watch /Applications for bundle swaps
+        // (Claude's updater renames the new version into place, which modifies
+        // the directory). A 6h timer is only a fallback for missed events.
+        startWatchingApplications()
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) { self.autoRepatchTick() }
-        Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { _ in self.autoRepatchTick() }
+        Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in self.autoRepatchTick() }
 
         // Self-update check: shortly after launch, then every 6 hours.
         DispatchQueue.main.asyncAfter(deadline: .now() + 30) { self.checkForSelfUpdate() }
@@ -181,6 +186,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // MARK: - Auto-repatch (Claude.app updated -> rebuild idle clones)
+
+    private func startWatchingApplications() {
+        let fd = open("/Applications", O_EVTONLY)
+        guard fd >= 0 else { return }
+        let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: .write, queue: .main)
+        src.setEventHandler { [weak self] in self?.scheduleDebouncedRepatchCheck() }
+        src.setCancelHandler { close(fd) }
+        src.resume()
+        appsDirSource = src
+    }
+
+    // Updates copy a large bundle over several seconds — wait for 30s of quiet
+    // before checking versions, so we never clone a half-written Claude.app.
+    private func scheduleDebouncedRepatchCheck() {
+        repatchDebounce?.cancel()
+        let item = DispatchWorkItem { [weak self] in self?.autoRepatchTick() }
+        repatchDebounce = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: item)
+    }
 
     // NSDictionary(contentsOfFile:) instead of Bundle(path:) — Bundle caches
     // Info.plist contents and would miss in-place updates.
