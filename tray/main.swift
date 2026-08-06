@@ -507,9 +507,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             cfg.createsNewApplicationInstance = true
             cfg.activates = true
             cfg.arguments = argsBuilder(cmd)
-            NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, error in
-                if let error = error {
-                    DispatchQueue.main.async { self.alert("Couldn't open \(term.name)", error.localizedDescription) }
+            NSWorkspace.shared.openApplication(at: url, configuration: cfg) { runningApp, error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        self.alert("Couldn't open \(term.name)", error.localizedDescription)
+                    } else {
+                        // A second app instance can open behind the existing one —
+                        // bring the new window forward explicitly.
+                        runningApp?.activate(options: [.activateIgnoringOtherApps])
+                    }
                 }
             }
         case .warpLaunchConfig:
