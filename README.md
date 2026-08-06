@@ -8,6 +8,9 @@ One **profile** = one cloned desktop app (`/Applications/Claude-<Name>.app`,
 isolated via `--user-data-dir`) + one CLI config dir (`~/.claude-profiles/<Name>`
 via `CLAUDE_CONFIG_DIR`).
 
+<img src="docs/menu.png" alt="Claudes menu: profiles with running indicators, per-profile desktop/terminal/copy-command actions, auto-repatch toggle" width="572">
+
+
 ## Install
 
 ```zsh
