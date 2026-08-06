@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   release:
-    runs-on: macos-14
+    runs-on: macos-latest
     env:
       HAS_CERT: ${{ secrets.MACOS_CERT_P12 != '' }}
       NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}

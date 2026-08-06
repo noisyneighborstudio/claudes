@@ -16,6 +16,44 @@ struct Profile {
     let configDir: String
 }
 
+func appleScriptEscape(_ s: String) -> String {
+    s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+}
+
+// Known terminals and how to hand each one a command. Only installed ones are shown.
+struct TerminalSpec {
+    let name: String
+    let bundleId: String
+    let kind: Kind
+    enum Kind {
+        case appleScript((String) -> String)   // cmd -> osascript source (needs Automation permission)
+        case openArgs((String) -> [String])    // cmd -> CLI args for a new app instance
+        case warpLaunchConfig                  // Warp: launch-configuration yaml + warp:// URL
+    }
+}
+
+let terminalSpecs: [TerminalSpec] = [
+    TerminalSpec(name: "Terminal", bundleId: "com.apple.Terminal", kind: .appleScript { cmd in
+        "tell application id \"com.apple.Terminal\"\nactivate\ndo script \"\(appleScriptEscape(cmd))\"\nend tell"
+    }),
+    TerminalSpec(name: "iTerm2", bundleId: "com.googlecode.iterm2", kind: .appleScript { cmd in
+        "tell application id \"com.googlecode.iterm2\"\nactivate\nset w to (create window with default profile)\ntell current session of w to write text \"\(appleScriptEscape(cmd))\"\nend tell"
+    }),
+    TerminalSpec(name: "Warp", bundleId: "dev.warp.Warp-Stable", kind: .warpLaunchConfig),
+    TerminalSpec(name: "Ghostty", bundleId: "com.mitchellh.ghostty", kind: .openArgs { cmd in
+        ["-e", "/bin/zsh", "-lc", cmd]
+    }),
+    TerminalSpec(name: "kitty", bundleId: "net.kovidgoyal.kitty", kind: .openArgs { cmd in
+        ["/bin/zsh", "-lc", cmd]
+    }),
+    TerminalSpec(name: "Alacritty", bundleId: "org.alacritty", kind: .openArgs { cmd in
+        ["-e", "/bin/zsh", "-lc", cmd]
+    }),
+    TerminalSpec(name: "WezTerm", bundleId: "com.github.wez.wezterm", kind: .openArgs { cmd in
+        ["start", "--", "/bin/zsh", "-lc", cmd]
+    }),
+]
+
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let fm = FileManager.default
@@ -107,7 +145,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if profile.hasApp {
                 sub.addItem(actionItem("Open Desktop App", #selector(openDesktop(_:)), profile.name))
             }
-            sub.addItem(actionItem("Open Terminal (Claude Code)", #selector(openTerminal(_:)), profile.name))
+            sub.addItem(actionItem("Open Claude Code (\(preferredTerminal.name))", #selector(openTerminal(_:)), profile.name))
+            let terms = installedTerminals()
+            if terms.count > 1 {
+                let inItem = NSMenuItem(title: "Open Claude Code In", action: nil, keyEquivalent: "")
+                let inMenu = NSMenu()
+                for t in terms {
+                    inMenu.addItem(actionItem(t.name, #selector(openTerminalIn(_:)), profile.name + "|" + t.bundleId))
+                }
+                inItem.submenu = inMenu
+                sub.addItem(inItem)
+            }
+            sub.addItem(actionItem("Copy Command:  claude-\(profile.name.lowercased())", #selector(copyCommand(_:)), profile.name))
             sub.addItem(actionItem("Reveal Data Dir", #selector(revealData(_:)), profile.name))
             sub.addItem(.separator())
             sub.addItem(actionItem("Delete Profile…", #selector(deleteProfile(_:)), profile.name))
@@ -123,6 +172,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let toggle = actionItem("Auto-repatch after Claude updates", #selector(toggleAutoRepatch(_:)), nil)
         toggle.state = autoRepatchEnabled ? .on : .off
         menu.addItem(toggle)
+        let allTerms = installedTerminals()
+        if allTerms.count > 1 {
+            let termItem = NSMenuItem(title: "Open Sessions In", action: nil, keyEquivalent: "")
+            let termMenu = NSMenu()
+            for t in allTerms {
+                let i = actionItem(t.name, #selector(setPreferredTerminal(_:)), t.bundleId)
+                i.state = (t.bundleId == preferredTerminal.bundleId) ? .on : .off
+                termMenu.addItem(i)
+            }
+            termItem.submenu = termMenu
+            menu.addItem(termItem)
+        }
         menu.addItem(.separator())
         let versionItem = NSMenuItem(title: "Claudes v\(currentVersion)", action: nil, keyEquivalent: "")
         menu.addItem(versionItem)
@@ -387,11 +448,94 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    // Runs in the user's login shell so their PATH applies.
+    private func sessionCommand(_ name: String) -> String {
+        "if command -v claude >/dev/null 2>&1; then CLAUDE_CONFIG_DIR=\"$HOME/.claude-profiles/\(name)\" claude; else echo 'Claude Code CLI not found. Install it first: npm install -g @anthropic-ai/claude-code'; fi"
+    }
+
+    private func installedTerminals() -> [TerminalSpec] {
+        terminalSpecs.filter { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0.bundleId) != nil }
+    }
+
+    private var preferredTerminal: TerminalSpec {
+        let saved = UserDefaults.standard.string(forKey: "preferredTerminal")
+        let installed = installedTerminals()
+        return installed.first { $0.bundleId == saved } ?? installed.first ?? terminalSpecs[0]
+    }
+
+    @objc private func setPreferredTerminal(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        UserDefaults.standard.set(id, forKey: "preferredTerminal")
+    }
+
     @objc private func openTerminal(_ sender: NSMenuItem) {
         guard let p = profile(from: sender) else { return }
-        // Runs in the user's login shell inside Terminal, so their PATH applies.
-        let cmd = "if command -v claude >/dev/null 2>&1; then CLAUDE_CONFIG_DIR=\"$HOME/.claude-profiles/\(p.name)\" claude; else echo 'Claude Code CLI not found. Install it first: npm install -g @anthropic-ai/claude-code'; fi"
-        runInTerminal(cmd)
+        launchSession(sessionCommand(p.name), slug: p.name, in: preferredTerminal)
+    }
+
+    @objc private func openTerminalIn(_ sender: NSMenuItem) {
+        guard let combo = sender.representedObject as? String else { return }
+        let parts = combo.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let spec = terminalSpecs.first(where: { $0.bundleId == parts[1] }) else { return }
+        launchSession(sessionCommand(parts[0]), slug: parts[0], in: spec)
+    }
+
+    @objc private func copyCommand(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString("claude-\(name.lowercased())", forType: .string)
+    }
+
+    private func launchSession(_ cmd: String, slug: String, in term: TerminalSpec) {
+        switch term.kind {
+        case .appleScript(let sourceBuilder):
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            task.arguments = ["-e", sourceBuilder(cmd)]
+            task.standardError = FileHandle.nullDevice
+            do {
+                try task.run()
+                task.waitUntilExit()
+                if task.terminationStatus != 0 { automationDeniedAlert(appName: term.name) }
+            } catch {
+                automationDeniedAlert(appName: term.name)
+            }
+        case .openArgs(let argsBuilder):
+            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: term.bundleId) else { return }
+            let cfg = NSWorkspace.OpenConfiguration()
+            cfg.createsNewApplicationInstance = true
+            cfg.activates = true
+            cfg.arguments = argsBuilder(cmd)
+            NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, error in
+                if let error = error {
+                    DispatchQueue.main.async { self.alert("Couldn't open \(term.name)", error.localizedDescription) }
+                }
+            }
+        case .warpLaunchConfig:
+            // Warp has no AppleScript/CLI-args path; its supported mechanism is a
+            // launch-configuration yaml opened via the warp:// URL scheme.
+            let dir = home + "/.warp/launch_configurations"
+            let fileName = "claudes-\(slug).yaml"
+            let yaml = """
+            name: claudes-\(slug)
+            windows:
+              - tabs:
+                  - title: Claude \(slug)
+                    layout:
+                      cwd: "\(home)"
+                      commands:
+                        - exec: >-
+                            \(cmd)
+            """
+            do {
+                try fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+                try yaml.write(toFile: dir + "/" + fileName, atomically: true, encoding: .utf8)
+                NSWorkspace.shared.open(URL(string: "warp://launch/\(fileName)")!)
+            } catch {
+                alert("Couldn't open Warp", error.localizedDescription)
+            }
+        }
     }
 
     @objc private func revealData(_ sender: NSMenuItem) {
@@ -485,10 +629,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func automationDeniedAlert() {
+    private func automationDeniedAlert(appName: String = "Terminal") {
         let alert = NSAlert()
-        alert.messageText = "Claudes can't control Terminal"
-        alert.informativeText = "macOS blocked Claudes from opening Terminal. Enable it under Privacy & Security → Automation → Claudes → Terminal, then try again."
+        alert.messageText = "Claudes can't control \(appName)"
+        alert.informativeText = "macOS blocked Claudes from controlling \(appName). Enable it under Privacy & Security → Automation → Claudes → \(appName), then try again."
         alert.addButton(withTitle: "Open Settings")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)

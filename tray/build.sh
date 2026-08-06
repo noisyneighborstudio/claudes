@@ -13,6 +13,7 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 
 echo "Compiling…"
 swiftc -O main.swift -o "$app/Contents/MacOS/ClaudeTray"
+swiftc -O icon-badge.swift -o "$app/Contents/Resources/icon-badge"
 cp Info.plist "$app/Contents/"
 
 # Version: explicit CLAUDES_VERSION (CI) > latest git tag (source builds) > 0.0.0.
@@ -28,9 +29,11 @@ chmod +x "$app/Contents/Resources/"*.sh
 identity=${CLAUDES_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Developer ID Application/{print $2; exit}')}
 if [[ -n ${identity:-} ]]; then
   echo "Signing with: $identity"
+  codesign --force --options runtime --sign "$identity" "$app/Contents/Resources/icon-badge"
   codesign --force --options runtime --entitlements entitlements.plist --sign "$identity" "$app"
 else
   echo "No Developer ID identity found — signing ad-hoc (fine for local use)."
+  codesign --force -s - "$app/Contents/Resources/icon-badge"
   codesign --force -s - "$app"
 fi
 codesign -v "$app"

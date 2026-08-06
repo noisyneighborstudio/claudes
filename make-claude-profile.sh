@@ -46,6 +46,29 @@ pb() {
 pb ":CFBundleIdentifier"  "com.anthropic.claudefordesktop.${name:l}"
 pb ":CFBundleDisplayName" "Claude $name"
 
+# Badge the icon: colored ribbon with the profile name, so Dock/Cmd-Tab icons
+# are distinguishable. Best-effort — a profile without a badge still works.
+badge="${0:A:h}/icon-badge"
+[[ -x $badge ]] || badge="${0:A:h}/tray/build/Claudes.app/Contents/Resources/icon-badge"  # dev-tree fallback
+iconfile=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$plist" 2>/dev/null || echo electron)
+iconfile="${iconfile%.icns}.icns"
+if [[ -x $badge && -f "$dst/Contents/Resources/$iconfile" ]]; then
+  echo "Badging icon…"
+  tmpd=$(mktemp -d)
+  if "$badge" "$dst/Contents/Resources/$iconfile" "$tmpd/badged.png" "$name" 2>/dev/null; then
+    mkdir "$tmpd/icon.iconset"
+    for sz in 16 32 128 256 512; do
+      sips -z $sz $sz "$tmpd/badged.png" --out "$tmpd/icon.iconset/icon_${sz}x${sz}.png" >/dev/null 2>&1
+      sips -z $((sz*2)) $((sz*2)) "$tmpd/badged.png" --out "$tmpd/icon.iconset/icon_${sz}x${sz}@2x.png" >/dev/null 2>&1
+    done
+    iconutil -c icns "$tmpd/icon.iconset" -o "$dst/Contents/Resources/$iconfile" 2>/dev/null \
+      || echo "  (icon badge skipped — iconutil failed)"
+  else
+    echo "  (icon badge skipped)"
+  fi
+  rm -rf "$tmpd"
+fi
+
 # Wrap the real binary so the isolated data dir applies on every launch,
 # including plain double-click from Finder/Dock.
 exe=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist")
