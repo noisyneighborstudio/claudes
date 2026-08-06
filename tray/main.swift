@@ -89,7 +89,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "🤖"
+        if let r = Bundle.main.resourcePath, let icon = NSImage(contentsOfFile: r + "/claudes.icns") {
+            icon.size = NSSize(width: 18, height: 18)
+            statusItem.button?.image = icon
+            statusItem.button?.imagePosition = .imageLeft
+        } else {
+            statusItem.button?.title = "🤖"
+        }
         let menu = NSMenu()
         menu.delegate = self
         statusItem.menu = menu
@@ -348,7 +354,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateStatusTitle(staleExists: Bool) {
         let busy = !repatchInFlight.isEmpty || selfUpdating
         let updateReady = latestVersion.map { isNewer($0, than: currentVersion) } ?? false
-        statusItem.button?.title = busy ? "🤖⏳" : (staleExists || updateReady ? "🤖⬆️" : "🤖")
+        let suffix = busy ? "⏳" : (staleExists || updateReady ? "⬆️" : "")
+        if statusItem.button?.image != nil {
+            statusItem.button?.title = suffix
+        } else {
+            statusItem.button?.title = "🤖" + suffix
+        }
     }
 
     @objc private func toggleAutoRepatch(_ sender: NSMenuItem) {
