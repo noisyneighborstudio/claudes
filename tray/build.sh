@@ -26,6 +26,16 @@ cp ../make-claude-profile.sh ../repatch-claude-profiles.sh "$app/Contents/Resour
 cp ../shell/claudes.zsh "$app/Contents/Resources/"
 chmod +x "$app/Contents/Resources/"*.sh
 
+# App icon: build multi-res icns from claudes.png
+iconset=$(mktemp -d)/claudes.iconset
+mkdir -p "$iconset"
+for sz in 16 32 128 256 512; do
+  sips -z $sz $sz claudes.png --out "$iconset/icon_${sz}x${sz}.png" >/dev/null
+  sips -z $((sz*2)) $((sz*2)) claudes.png --out "$iconset/icon_${sz}x${sz}@2x.png" >/dev/null
+done
+iconutil -c icns "$iconset" -o "$app/Contents/Resources/claudes.icns"
+rm -rf "${iconset:h}"
+
 identity=${CLAUDES_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Developer ID Application/{print $2; exit}')}
 if [[ -n ${identity:-} ]]; then
   echo "Signing with: $identity"

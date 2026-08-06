@@ -4,6 +4,8 @@
 <dict>
 	<key>CFBundleExecutable</key>
 	<string>ClaudeTray</string>
+	<key>CFBundleIconFile</key>
+	<string>claudes</string>
 	<key>CFBundleIdentifier</key>
 	<string>dev.sethwebster.claudes</string>
 	<key>CFBundleName</key>
