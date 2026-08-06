@@ -15,6 +15,7 @@ echo "Compiling…"
 swiftc -O main.swift -o "$app/Contents/MacOS/ClaudeTray"
 cp Info.plist "$app/Contents/"
 cp ../make-claude-profile.sh ../repatch-claude-profiles.sh "$app/Contents/Resources/"
+cp ../shell/claudes.zsh "$app/Contents/Resources/"
 chmod +x "$app/Contents/Resources/"*.sh
 
 identity=${CLAUDES_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Developer ID Application/{print $2; exit}')}

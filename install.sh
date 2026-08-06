@@ -25,7 +25,15 @@ rm -rf /Applications/Claudes.app
 cp -R tray/build/Claudes.app /Applications/
 open /Applications/Claudes.app
 
+# Shell helper: per-profile commands (claude-work, claude-expo, …) + claude-as.
+# Sourced from the installed app so there's one stable path; the guard makes the
+# line inert if Claudes is ever removed.
+helper_line='[[ -f "/Applications/Claudes.app/Contents/Resources/claudes.zsh" ]] && source "/Applications/Claudes.app/Contents/Resources/claudes.zsh"  # claudes'
+if [[ -w $HOME/.zshrc || ! -e $HOME/.zshrc ]] && ! grep -qF '# claudes' "$HOME/.zshrc" 2>/dev/null; then
+  printf '\n%s\n' "$helper_line" >> "$HOME/.zshrc"
+  echo "✓ Shell helper added to ~/.zshrc (new shells get claude-<profile> commands)"
+fi
+
 echo ""
 echo "✓ Installed. Look for 🤖 in the menu bar."
 echo "  Optional: add Claudes to System Settings → Login Items."
-echo "  Optional shell helper: source $(pwd)/shell/claudes.zsh in ~/.zshrc"

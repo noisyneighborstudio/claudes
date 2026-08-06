@@ -21,12 +21,16 @@ Then click 🤖 in the menu bar → **New Profile…** → e.g. `Work` → sign 
 the new desktop app, and once in the CLI (`/login`). Add Claudes.app to
 System Settings → Login Items to start at boot.
 
-**Shell helper** (optional — launch profiles from your own terminal):
+**Shell commands** (added to `~/.zshrc` by install.sh): every profile gets a
+CLI command named after it — profile `Work` → `claude-work`, profile `Expo` →
+`claude-expo`. Commands appear automatically when profiles are created (a
+command-not-found hook covers shells opened before the profile existed) and
+never shadow a real binary of the same name. `claude-as <Profile>` is the
+explicit, tab-completable form:
 
 ```zsh
-# ~/.zshrc
-source /path/to/claudes/shell/claudes.zsh
-claude-as Work            # Claude Code with the Work profile
+claude-expo               # Claude Code with the Expo profile
+claude-as Expo --resume   # same, explicit form with args
 ```
 
 For per-project auto-switching, use direnv: `export CLAUDE_CONFIG_DIR=$HOME/.claude-profiles/Work`

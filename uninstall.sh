@@ -7,6 +7,11 @@ pkill -f ClaudeTray 2>/dev/null || true
 rm -rf /Applications/Claudes.app
 echo "✓ Removed Claudes.app"
 
+if grep -qF '# claudes' "$HOME/.zshrc" 2>/dev/null; then
+  sed -i '' '/# claudes$/d' "$HOME/.zshrc"
+  echo "✓ Removed shell helper line from ~/.zshrc"
+fi
+
 setopt null_glob
 apps=(/Applications/Claude-*.app)
 cfgs=("$HOME/.claude-profiles"/*(N))
