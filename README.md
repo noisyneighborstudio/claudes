@@ -10,7 +10,12 @@ via `CLAUDE_CONFIG_DIR`).
 
 ## Install
 
-**From source** (requires Xcode Command Line Tools):
+```zsh
+curl -fsSL https://raw.githubusercontent.com/sethwebster/claudes/main/install.sh | zsh
+```
+
+Builds locally (needs Xcode Command Line Tools — the installer prompts if
+missing) and installs Claudes.app. Prefer to read before you pipe?
 
 ```zsh
 git clone https://github.com/sethwebster/claudes && cd claudes
