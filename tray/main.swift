@@ -131,6 +131,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(NSMenuItem(title: "No profiles yet", action: nil, keyEquivalent: ""))
         }
 
+        // Once profiles exist, the un-profiled original earns its own entry.
+        if !profiles.isEmpty && claudeInstalled {
+            let dot = isDefaultRunning() ? "🟢" : "⚪️"
+            let item = NSMenuItem(title: "\(dot) Default", action: nil, keyEquivalent: "")
+            let sub = NSMenu()
+            sub.addItem(actionItem("Open Desktop App", #selector(openDefaultDesktop(_:)), nil))
+            sub.addItem(actionItem("Open Claude Code (\(preferredTerminal.name))", #selector(openDefaultTerminal(_:)), nil))
+            let dTerms = installedTerminals()
+            if dTerms.count > 1 {
+                let inItem = NSMenuItem(title: "Open Claude Code In", action: nil, keyEquivalent: "")
+                let inMenu = NSMenu()
+                for t in dTerms {
+                    inMenu.addItem(actionItem(t.name, #selector(openDefaultTerminalIn(_:)), t.bundleId))
+                }
+                inItem.submenu = inMenu
+                sub.addItem(inItem)
+            }
+            sub.addItem(actionItem("Copy Command:  claude", #selector(copyDefaultCommand(_:)), nil))
+            sub.addItem(actionItem("Reveal Data Dir", #selector(revealDefaultData(_:)), nil))
+            item.submenu = sub
+            menu.addItem(item)
+        }
+
         for profile in profiles {
             var marker = isRunning(profile) ? "🟢" : "⚪️"
             var suffix = ""
@@ -448,9 +471,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    // Runs in the user's login shell so their PATH applies.
-    private func sessionCommand(_ name: String) -> String {
-        "if command -v claude >/dev/null 2>&1; then CLAUDE_CONFIG_DIR=\"$HOME/.claude-profiles/\(name)\" claude; else echo 'Claude Code CLI not found. Install it first: npm install -g @anthropic-ai/claude-code'; fi"
+    // Runs in the user's login shell so their PATH applies. nil name = default config.
+    private func sessionCommand(_ name: String?) -> String {
+        let invoke = name.map { "CLAUDE_CONFIG_DIR=\"$HOME/.claude-profiles/\($0)\" claude" } ?? "claude"
+        return "if command -v claude >/dev/null 2>&1; then \(invoke); else echo 'Claude Code CLI not found. Install it first: npm install -g @anthropic-ai/claude-code'; fi"
+    }
+
+    private func isDefaultRunning() -> Bool {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        task.arguments = ["-f", claudeAppPath + "/Contents/MacOS/Claude"]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        do {
+            try task.run()
+            task.waitUntilExit()
+            return task.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }
+
+    @objc private func openDefaultDesktop(_ sender: NSMenuItem) {
+        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: claudeAppPath),
+                                           configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    @objc private func openDefaultTerminal(_ sender: NSMenuItem) {
+        launchSession(sessionCommand(nil), slug: "Default", in: preferredTerminal)
+    }
+
+    @objc private func openDefaultTerminalIn(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String,
+              let spec = terminalSpecs.first(where: { $0.bundleId == id }) else { return }
+        launchSession(sessionCommand(nil), slug: "Default", in: spec)
+    }
+
+    @objc private func copyDefaultCommand(_ sender: NSMenuItem) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString("claude", forType: .string)
+    }
+
+    @objc private func revealDefaultData(_ sender: NSMenuItem) {
+        let dir = home + "/Library/Application Support/Claude"
+        NSWorkspace.shared.open(URL(fileURLWithPath: dir))
     }
 
     private func installedTerminals() -> [TerminalSpec] {
@@ -565,6 +630,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let name = field.stringValue.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty, name.allSatisfy({ ($0.isLetter || $0.isNumber) && $0.isASCII }) else {
             self.alert("Invalid name", "Use ASCII letters and numbers only, e.g. Work or Client2.")
+            return
+        }
+        if name.lowercased() == "default" {
+            self.alert("Reserved name", "“Default” is the un-profiled Claude — it already has a menu entry.")
             return
         }
         if fm.fileExists(atPath: "/Applications/Claude-\(name).app") {
