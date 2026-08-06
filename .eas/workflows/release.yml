@@ -13,6 +13,7 @@ jobs:
     name: Build + semantic-release
     type: custom
     runs_on: macos-medium
+    image: latest
     environment: production
     steps:
       - uses: eas/checkout
