@@ -42,8 +42,14 @@ in a repo's `.envrc`.
 - Per profile: open the desktop app, open a Claude Code terminal session,
   reveal the data dir, delete the profile
 - **New Profile…** — clones and patches Claude.app (progress shown in Terminal)
-- **Re-patch All** — run after Claude Desktop auto-updates; rebuilds each clone
-  from the updated original. Logins survive (they live outside the bundle).
+- **Auto-repatch** — the tray detects when Claude Desktop has updated (version
+  drift between the original and each clone) and silently rebuilds idle clones
+  in the background. Running instances are picked up on a later check after
+  they quit. Menu bar shows 🤖⬆️ while an update is pending, ⏳ while
+  rebuilding. Toggle it off in the menu if you prefer manual **Re-patch All**.
+  Logins always survive (they live outside the bundle).
+- **Self-update** — Claudes checks GitHub releases and offers a one-click
+  "Update Claudes to vX.Y.Z" when a newer version ships.
 
 Nothing global is ever switched — each terminal session gets its own
 `CLAUDE_CONFIG_DIR`; plain `claude` elsewhere is untouched.
@@ -75,6 +81,15 @@ Nothing global is ever switched — each terminal session gets its own
 | Keychain prompt on a clone's first login | Normal (signing identity differs) — click Always Allow |
 | `claude` not found in profile terminal | `npm install -g @anthropic-ai/claude-code` |
 | Clone crashes at launch (SIGTRAP/dyld) | You may have re-signed it manually with `--deep` — re-patch |
+
+## Releases & contributing
+
+Releases are automated with semantic-release on pushes to `main` — use
+[conventional commits](https://www.conventionalcommits.org) (`feat:`, `fix:`,
+`BREAKING CHANGE:`) so versions and release notes generate themselves. CI
+builds `Claudes.zip`, signs/notarizes when credentials are configured, and
+attaches it to the GitHub release; the app's self-update picks it up from
+there.
 
 ## Disclaimer
 

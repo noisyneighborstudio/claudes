@@ -9,7 +9,18 @@ here=${0:A:h}
 [[ -d /Applications/Claude.app ]] || { echo "✗ Claude Desktop is not installed; nothing to repatch against." >&2; exit 1 }
 
 setopt null_glob
-apps=(/Applications/Claude-*.app)
+if (( $# > 0 )); then
+  # Explicit profile names (used by the tray's auto-repatch)
+  apps=()
+  for n in "$@"; do
+    [[ $n =~ ^[A-Za-z0-9]+$ ]] || { echo "✗ Invalid profile name: $n" >&2; exit 1 }
+    a="/Applications/Claude-$n.app"
+    [[ -d $a ]] || { echo "✗ No such profile app: $a" >&2; exit 1 }
+    apps+=("$a")
+  done
+else
+  apps=(/Applications/Claude-*.app)
+fi
 if (( ${#apps} == 0 )); then
   echo "No Claude-*.app profiles found; nothing to repatch."
   exit 0

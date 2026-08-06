@@ -1,0 +1,15 @@
+{
+  "branches": ["main"],
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    ["@semantic-release/exec", {
+      "prepareCmd": "./scripts/release-build.sh ${nextRelease.version}"
+    }],
+    ["@semantic-release/github", {
+      "assets": [
+        { "path": "Claudes.zip", "name": "Claudes.zip", "label": "Claudes.app (zip)" }
+      ]
+    }]
+  ]
+}

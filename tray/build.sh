@@ -14,6 +14,13 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 echo "Compiling…"
 swiftc -O main.swift -o "$app/Contents/MacOS/ClaudeTray"
 cp Info.plist "$app/Contents/"
+
+# Version: explicit CLAUDES_VERSION (CI) > latest git tag (source builds) > 0.0.0.
+# Self-update compares this against the latest GitHub release.
+ver=${CLAUDES_VERSION:-$(git -C .. describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true)}
+ver=${ver:-0.0.0}
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $ver" "$app/Contents/Info.plist"
+echo "Version: $ver"
 cp ../make-claude-profile.sh ../repatch-claude-profiles.sh "$app/Contents/Resources/"
 cp ../shell/claudes.zsh "$app/Contents/Resources/"
 chmod +x "$app/Contents/Resources/"*.sh
