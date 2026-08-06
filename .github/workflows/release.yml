@@ -19,7 +19,9 @@ concurrency:
 jobs:
   release:
     runs-on: macos-latest
+    timeout-minutes: 30
     env:
+      CI: "1"
       HAS_CERT: ${{ secrets.MACOS_CERT_P12 != '' }}
       NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
       NOTARY_KEY_ISSUER: ${{ secrets.NOTARY_KEY_ISSUER }}
@@ -38,6 +40,7 @@ jobs:
           security create-keychain -p ci build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p ci build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
           security import cert.p12 -k build.keychain -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
           rm cert.p12
