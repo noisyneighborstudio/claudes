@@ -68,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var selfUpdating = false
     private var appsDirSource: DispatchSourceFileSystemObject?
     private var repatchDebounce: DispatchWorkItem?
+    private var lastUpdateCheck = Date.distantPast
 
     private var autoRepatchEnabled: Bool {
         get { UserDefaults.standard.object(forKey: "autoRepatch") as? Bool ?? true }
@@ -115,6 +116,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Menu construction (rebuilt each time it opens)
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        // Opportunistic release check on menu open (async; throttled to 5 min)
+        // so updates surface within one interaction of shipping, not one timer cycle.
+        if Date().timeIntervalSince(lastUpdateCheck) > 300 {
+            lastUpdateCheck = Date()
+            checkForSelfUpdate()
+        }
         menu.removeAllItems()
         let profiles = discoverProfiles()
         let claudeInstalled = fm.fileExists(atPath: claudeAppPath)
