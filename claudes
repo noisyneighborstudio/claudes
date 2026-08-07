@@ -334,6 +334,8 @@ session_meta() {  # path -> cwd \t snippet
   if [ -z "$snippet" ]; then
     snippet=$(printf '%s' "$head" | grep -o '"text":"[^"]*' | head -1 | cut -c9- | cut -c1-70)
   fi
+  # JSON escapes read poorly in a table — flatten \n/\t to spaces, unescape quotes.
+  snippet=$(printf '%s' "$snippet" | sed 's/\\[nt]/ /g; s/\\"/"/g')
   printf '%s\t%s\n' "$cwd" "${snippet:-(no prompt)}"
 }
 
