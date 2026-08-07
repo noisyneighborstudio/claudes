@@ -77,7 +77,7 @@ script, so the two can't drift:
 | `claudes use <Profile>`          | Switch the **global** active profile          |
 | `claudes run <Profile\|--next>`  | New Claude Code session, pinned or rotating   |
 | `claudes sessions [Profile]`     | List sessions (id · date · project · prompt)  |
-| `claudes transfer <id> --to <P>` | Move a session between profiles               |
+| `claudes transfer <id> --to <P>` | Move a session between profiles (`--next` rotates) |
 | `claudes new <Name>`             | Create a profile                              |
 | `claudes delete <Name>`          | Delete (`--everything` removes data + config) |
 | `claudes repatch [Name]`         | Rebuild clone(s) after a Claude update        |

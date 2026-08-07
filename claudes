@@ -10,7 +10,7 @@
 #   claudes delete <Name> [--everything] [--yes]
 #   claudes repatch [Name]                rebuild clone(s) after a Claude update
 #   claudes sessions [Profile|Default]    list Claude Code sessions
-#   claudes transfer <session-id> --to <Profile> [--from <Profile>]
+#   claudes transfer <id> --to <Profile>|--next [--from <Profile>]
 #   claudes desktop [Name|--next]         open the desktop app
 #   claudes version
 #
@@ -249,12 +249,15 @@ cmd_transfer() {
     esac
     case $arg in
       --to|--from) prev=$arg ;;
+      --next) to="--next" ;;
       -*) die "unknown flag: $arg" ;;
       *) id=$arg ;;
     esac
   done
-  { [ -n "$id" ] && [ -n "$to" ]; } || die "usage: claudes transfer <session-id> --to <Profile> [--from <Profile>]"
-  to=$(resolve_profile "$to") || die "no profile named '$to'"
+  { [ -n "$id" ] && [ -n "$to" ]; } || die "usage: claudes transfer <id> --to <Profile>|--next [--from <Profile>]"
+  if [ "$to" != "--next" ]; then
+    to=$(resolve_profile "$to") || die "no profile named '$to'"
+  fi
 
   # Locate the source transcript: given profile, or search all of them.
   src_cfg="" jsonl=""
@@ -274,6 +277,11 @@ cmd_transfer() {
       [ -n "$jsonl" ] && break
     done
     [ -n "$jsonl" ] || die "session $id not found in any profile"
+  fi
+  if [ "$to" = "--next" ]; then
+    to=$(rotation_next)
+    [ "$to" = "$from" ] && to=$(rotation_next)  # rotating onto the source is a no-op; step past it
+    echo "claudes: rotating to profile '$to'" >&2
   fi
   [ "$from" = "$to" ] && die "session is already in '$to'"
 
