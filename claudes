@@ -5,13 +5,14 @@
 #   claudes list                          profiles (✓ active, 🟢 running)
 #   claudes active                        print the active profile name
 #   claudes use <Profile|Default>         switch the GLOBAL active profile
-#   claudes run <Profile|--next> [--start-from-session=<id>] [claude args...]
+#   claudes run <Profile|--next|--best> [--start-from-session=<id>] [args]
+#   claudes best                          per-profile usage (5h/7d windows)
 #   claudes new <Name>                    create a profile (app clone + config dir)
 #   claudes delete <Name> [--everything] [--yes]
 #   claudes repatch [Name]                rebuild clone(s) after a Claude update
 #   claudes sessions [Profile|Default]    list Claude Code sessions
-#   claudes transfer <id> --to <Profile>|--next [--from <Profile>]
-#   claudes desktop [Name|--next]         open the desktop app
+#   claudes transfer <id> --to <Profile>|--next|--best [--from <Profile>]
+#   claudes desktop [Name|--next|--best]  open the desktop app
 #   claudes version
 #
 # Global switching: ~/.claude becomes a symlink into ~/.claude-profiles/, so
@@ -144,19 +145,111 @@ rotation_next() {
   echo "$next"
 }
 
+# Server-side usage per profile, from the same OAuth endpoint the CLI's /usage
+# screen reads. Ground truth (includes web/desktop/other machines), not a local
+# heuristic. Prints: name<TAB>5h%<TAB>7d%<TAB>5h-resets<TAB>note
+usage_table() {
+  ut_args=""
+  for n in $( { echo Default; profile_names; } | sort -fu ); do
+    ut_args="$ut_args $n=$(config_dir "$n")"
+  done
+  # shellcheck disable=SC2086
+  /usr/bin/python3 - $ut_args <<'PYEOF'
+import hashlib, json, subprocess, sys, time, urllib.request
+
+def creds(cfg, is_default):
+    # Keychain service is "Claude Code-credentials[-<sha256(cfgdir)[:8]>]";
+    # the unsuffixed entry belongs to the default ~/.claude config dir.
+    svcs = ['Claude Code-credentials-' + hashlib.sha256(cfg.encode()).hexdigest()[:8]]
+    if is_default:
+        svcs.insert(0, 'Claude Code-credentials')
+    found = None
+    for svc in svcs:
+        p = subprocess.run(['security', 'find-generic-password', '-s', svc, '-w'],
+                           capture_output=True, text=True)
+        if p.returncode == 0:
+            try:
+                c = json.loads(p.stdout.strip()).get('claudeAiOauth', {})
+            except ValueError:
+                continue
+            if c.get('accessToken'):
+                found = c
+                if c.get('expiresAt', 0) / 1000 > time.time():
+                    return c, 'ok'
+    try:
+        c = json.load(open(cfg + '/.credentials.json')).get('claudeAiOauth', {})
+        if c.get('accessToken'):
+            if c.get('expiresAt', 0) / 1000 > time.time():
+                return c, 'ok'
+            found = found or c
+    except (OSError, ValueError):
+        pass
+    return (found, 'stale-token') if found else (None, 'no-token')
+
+for pair in sys.argv[1:]:
+    name, cfg = pair.split('=', 1)
+    c, status = creds(cfg, name == 'Default')
+    if status != 'ok':
+        print(f"{name}\t-\t-\t-\t{status}")
+        continue
+    req = urllib.request.Request('https://api.anthropic.com/api/oauth/usage',
+        headers={'Authorization': 'Bearer ' + c['accessToken'],
+                 'anthropic-beta': 'oauth-2025-04-20', 'User-Agent': 'claudes'})
+    try:
+        r = json.load(urllib.request.urlopen(req, timeout=10))
+        five = r.get('five_hour') or {}
+        seven = r.get('seven_day') or {}
+        print(f"{name}\t{five.get('utilization', '-')}\t{seven.get('utilization', '-')}"
+              f"\t{(five.get('resets_at') or '-')[:16]}\tok")
+    except Exception:
+        print(f"{name}\t-\t-\t-\tfetch-error")
+PYEOF
+}
+
+# Lowest 5-hour utilization wins; ties fall to 7-day, then list order.
+# Updates the rotation pointer so --next continues from the pick.
+# $1 (optional): profile to exclude (a resumed session's source).
+pick_best() {
+  pb_best="" pb_five=101 pb_seven=101
+  while IFS="$(printf '\t')" read -r n five seven _ note; do
+    [ "$note" = ok ] || continue
+    [ "$n" = "${1:-}" ] && continue
+    f=${five%.*} s=${seven%.*}
+    case $f in ''|*[!0-9]*) continue ;; esac
+    if [ "$f" -lt "$pb_five" ] || { [ "$f" -eq "$pb_five" ] && [ "$s" -lt "$pb_seven" ]; }; then
+      pb_best=$n pb_five=$f pb_seven=$s
+    fi
+  done <<EOF
+$(usage_table)
+EOF
+  [ -n "$pb_best" ] || return 1
+  mkdir -p "$root"
+  printf '%s' "$pb_best" > "$root/.rotation"
+  echo "$pb_best"
+}
+
+cmd_best() {
+  printf '%-14s %6s %6s %-18s %s\n' "PROFILE" "5H%" "7D%" "5H RESETS (UTC)" "NOTE"
+  usage_table | while IFS="$(printf '\t')" read -r n five seven resets note; do
+    [ "$note" = ok ] && note=""
+    printf '%-14s %6s %6s %-18s %s\n' "$n" "$five" "$seven" "$resets" "$note"
+  done
+}
+
 cmd_run() {
-  usage="usage: claudes run <Profile|--next> [--start-from-session=<id>] [claude args...]"
-  name="" sess="" rotate=0
+  usage="usage: claudes run <Profile|--next|--best> [--start-from-session=<id>] [claude args...]"
+  name="" sess="" rotate=0 best=0
   while [ $# -gt 0 ]; do
     case $1 in
       --next) rotate=1; shift ;;
+      --best) best=1; shift ;;
       --start-from-session=*) sess=${1#--start-from-session=}; shift ;;
       -*) break ;;  # remaining args belong to claude
-      *) if [ -z "$name" ] && [ "$rotate" = 0 ]; then name=$1; shift; else break; fi ;;
+      *) if [ -z "$name" ] && [ "$rotate" = 0 ] && [ "$best" = 0 ]; then name=$1; shift; else break; fi ;;
     esac
   done
-  [ -n "$name" ] && [ "$rotate" = 1 ] && die "$usage (a profile name and --next are mutually exclusive)"
-  { [ -n "$name" ] || [ "$rotate" = 1 ]; } || die "$usage"
+  picks=$(( (rotate + best) + $( [ -n "$name" ] && echo 1 || echo 0 ) ))
+  [ "$picks" = 1 ] || die "$usage (pick exactly one of a profile name, --next, --best)"
   command -v claude >/dev/null 2>&1 || die "Claude Code CLI not found — install it: npm install -g @anthropic-ai/claude-code"
 
   src=""
@@ -168,6 +261,9 @@ cmd_run() {
     name=$(rotation_next)
     [ -n "$sess" ] && [ "$name" = "$src" ] && name=$(rotation_next)  # already there; step past
     echo "claudes: rotating to profile '$name'" >&2
+  elif [ "$best" = 1 ]; then
+    name=$(pick_best "$src") || die "no profile with a readable token — run 'claudes best' to see why"
+    echo "claudes: best available profile is '$name'" >&2
   else
     name=$(resolve_profile "$name") || die "no profile named '$name' (see: claudes list)"
   fi
@@ -299,14 +395,15 @@ cmd_transfer() {
     case $arg in
       --to|--from) prev=$arg ;;
       --next) to="--next" ;;
+      --best) to="--best" ;;
       -*) die "unknown flag: $arg" ;;
       *) id=$arg ;;
     esac
   done
-  { [ -n "$id" ] && [ -n "$to" ]; } || die "usage: claudes transfer <id> --to <Profile>|--next [--from <Profile>]"
-  if [ "$to" != "--next" ]; then
+  { [ -n "$id" ] && [ -n "$to" ]; } || die "usage: claudes transfer <id> --to <Profile>|--next|--best [--from <Profile>]"
+  case $to in --next|--best) ;; *)
     to=$(resolve_profile "$to") || die "no profile named '$to'"
-  fi
+  esac
 
   # Locate the source transcript: given profile, or search all of them.
   if [ -n "$from" ]; then
@@ -322,6 +419,9 @@ cmd_transfer() {
     to=$(rotation_next)
     [ "$to" = "$from" ] && to=$(rotation_next)  # rotating onto the source is a no-op; step past it
     echo "claudes: rotating to profile '$to'" >&2
+  elif [ "$to" = "--best" ]; then
+    to=$(pick_best "$from") || die "no profile with a readable token — run 'claudes best' to see why"
+    echo "claudes: best available profile is '$to'" >&2
   fi
   [ "$from" = "$to" ] && die "session is already in '$to'"
 
@@ -364,6 +464,9 @@ cmd_desktop() {
   if [ "${1:-}" = --next ]; then
     name=$(rotation_next)
     echo "claudes: rotating to profile '$name'" >&2
+  elif [ "${1:-}" = --best ]; then
+    name=$(pick_best) || die "no profile with a readable token — run 'claudes best' to see why"
+    echo "claudes: best available profile is '$name'" >&2
   else
     name=$(resolve_profile "${1:-Default}") || die "no profile named '$1'"
   fi
@@ -384,7 +487,7 @@ cmd_version() {
 }
 
 cmd_help() {
-  sed -n '5,16p' "$self" | sed 's/^# \{0,3\}//'
+  sed -n '5,17p' "$self" | sed 's/^# \{0,3\}//'
 }
 
 cmd=${1:-help}
@@ -394,6 +497,7 @@ case $cmd in
   active)   active_profile ;;
   use)      cmd_use "$@" ;;
   run)      cmd_run "$@" ;;
+  best)     cmd_best "$@" ;;
   new)      cmd_new "$@" ;;
   delete)   cmd_delete "$@" ;;
   repatch)  cmd_repatch "$@" ;;

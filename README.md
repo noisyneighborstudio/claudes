@@ -104,13 +104,24 @@ claudes run --next                  # new session on the next profile
 claudes desktop --next              # next profile's desktop app
 ```
 
+Rotation is blind; `--best` is not. It asks each account's **server-side usage
+data** (the same numbers the CLI's `/usage` screen shows — all devices and
+surfaces included) and picks the profile with the most 5-hour-window headroom:
+
+```sh
+claudes best                        # per-profile usage: 5h% · 7d% · resets
+claudes run --best                  # new session on the emptiest account
+```
+
 And the one-liner for *keep going on another account*:
 
 ```sh
-claudes run --next --start-from-session=<id>
+claudes run --best --start-from-session=<id>    # (or --next for blind rotation)
 ```
 
-That finds the session wherever it lives, moves it to the next profile in rotation (skipping the one it's already on), jumps to the session's project directory, and resumes it there — same conversation, different account.
+That finds the session wherever it lives, moves it to the best (or next)
+profile — never the one it's already on — jumps to the session's project
+directory, and resumes it there — same conversation, different account.
 
 Rotation is round-robin over all profiles, `Default` included. One shared pointer: `run`, `desktop`, and `transfer` advance it together. Transfers are also in the tray — each profile's menu has **Transfer Session…** with a session picker and a one-click **Open Now** after the move.
 
@@ -124,13 +135,14 @@ Everything the tray does is also a command — the tray shells out to the same s
 | -------------------------------- | ---------------------------------------------------------------------------- |
 | `claudes list`                   | Profiles: ✓ active, 🟢 running                                                |
 | `claudes use <Profile>`          | Switch the **global** active profile                                         |
-| `claudes run <Profile\|--next>`  | New session, pinned or rotating; `--start-from-session=<id>` moves + resumes |
+| `claudes run <Profile\|--next\|--best>` | New session — pinned, rotating, or emptiest account; `--start-from-session=<id>` moves + resumes |
+| `claudes best`                   | Per-profile server-side usage (5h/7d windows)                                |
 | `claudes sessions [Profile]`     | List sessions (id · date · project · prompt)                                 |
-| `claudes transfer <id> --to <P>` | Move a session between profiles (`--next` rotates)                           |
+| `claudes transfer <id> --to <P>` | Move a session between profiles (`--next`/`--best` pick for you)             |
 | `claudes new <Name>`             | Create a profile                                                             |
 | `claudes delete <Name>`          | Delete (`--everything` removes data + config)                                |
 | `claudes repatch [Name]`         | Rebuild clone(s) after a Claude update                                       |
-| `claudes desktop [Name\|--next]` | Open a profile's desktop app                                                 |
+| `claudes desktop [Name\|--next\|--best]` | Open a profile's desktop app                                         |
 
 > [!NOTE]
 > **Global switching.** `claudes use` turns `~/.claude` into a symlink to the active profile (the first switch migrates your original `~/.claude` to `~/.claude-profiles/Default`). From then on, *anything* that reads the default config dir — plain `claude` in any terminal, editors, IDE plugins — follows the active profile. Running sessions keep the profile they started with, and `claude-<profile>` / `CLAUDE_CONFIG_DIR` still pin a single invocation regardless of the global setting.
