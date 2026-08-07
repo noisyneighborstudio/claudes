@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🤖 Claudes
+<img src="docs/logo.png" alt="Claudes logo: a stack of orange Claude app tiles" width="128">
+
+# Claudes
 
 **Run multiple isolated Claude accounts on one Mac.**
 
@@ -39,7 +41,7 @@ git clone https://github.com/sethwebster/claudes && cd claudes
 
 Then:
 
-1. Click **🤖** in the menu bar → **New Profile…** → e.g. `Work`
+1. Click the **Claudes icon** in the menu bar → **New Profile…** → e.g. `Work`
 2. Sign in once in the new desktop app, and once in the CLI (`/login`)
 3. Optional: add Claudes.app to **System Settings → Login Items**
 
@@ -129,7 +131,7 @@ also remove profiles).
 
 | Symptom                                   | Fix                                                                            |
 | ----------------------------------------- | ------------------------------------------------------------------------------ |
-| Clone won't launch after a Claude update  | 🤖 → **Re-patch All**                                                          |
+| Clone won't launch after a Claude update  | Claudes menu → **Re-patch All**                                                |
 | "Claudes can't control Terminal"          | System Settings → Privacy & Security → Automation → Claudes → enable Terminal  |
 | Keychain prompt on a clone's first login  | Normal (signing identity differs) — click **Always Allow**                     |
 | `claude` not found in profile terminal    | `npm install -g @anthropic-ai/claude-code`                                     |
