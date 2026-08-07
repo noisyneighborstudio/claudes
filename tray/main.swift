@@ -567,9 +567,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func sessionCommand(_ name: String?) -> String {
         // Once migrated, "Default" must be pinned explicitly — a bare `claude`
         // would follow the ~/.claude symlink to whatever profile is active.
+        // env-prefix + &&/|| so the command is valid in zsh, bash, AND fish
+        // (VAR=x cmd and if/then are not) — Terminal/iTerm run the user's shell.
         let effective = name ?? (isDefaultMigrated ? "Default" : nil)
-        let invoke = effective.map { "CLAUDE_CONFIG_DIR=\"$HOME/.claude-profiles/\($0)\" claude" } ?? "claude"
-        return "if command -v claude >/dev/null 2>&1; then \(invoke); else echo 'Claude Code CLI not found. Install it first: npm install -g @anthropic-ai/claude-code'; fi"
+        let invoke = effective.map { "env CLAUDE_CONFIG_DIR=\"$HOME/.claude-profiles/\($0)\" claude" } ?? "claude"
+        return "command -v claude >/dev/null 2>&1 && \(invoke) || echo 'Claude Code CLI not found. Install it first: npm install -g @anthropic-ai/claude-code'"
     }
 
     private func isDefaultRunning() -> Bool {
@@ -908,7 +910,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         let effectiveDest = dest.name ?? (isDefaultMigrated ? "Default" : nil)
-        let invoke = effectiveDest.map { "CLAUDE_CONFIG_DIR=\"$HOME/.claude-profiles/\($0)\" claude --resume \(session.id)" }
+        let invoke = effectiveDest.map { "env CLAUDE_CONFIG_DIR=\"$HOME/.claude-profiles/\($0)\" claude --resume \(session.id)" }
             ?? "claude --resume \(session.id)"
         let resumeCmd = session.cwd.map { "cd \"\($0)\" && \(invoke)" } ?? invoke
 

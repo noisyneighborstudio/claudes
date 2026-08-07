@@ -5,6 +5,7 @@
 #   claudes list                          profiles (✓ active, 🟢 running)
 #   claudes active                        print the active profile name
 #   claudes use <Profile|Default>         switch the GLOBAL active profile
+#   claudes run <Profile|Default> [args]  run Claude Code pinned to a profile
 #   claudes new <Name>                    create a profile (app clone + config dir)
 #   claudes delete <Name> [--everything] [--yes]
 #   claudes repatch [Name]                rebuild clone(s) after a Claude update
@@ -113,6 +114,14 @@ cmd_use() {
   [ -n "${CLAUDE_CONFIG_DIR:-}" ] && \
     echo "note: CLAUDE_CONFIG_DIR is set in this shell and overrides the global switch here."
   true
+}
+
+cmd_run() {
+  [ $# -ge 1 ] || die "usage: claudes run <Profile|Default> [claude args...]"
+  name=$(resolve_profile "$1") || die "no profile named '$1' (see: claudes list)"
+  shift
+  command -v claude >/dev/null 2>&1 || die "Claude Code CLI not found — install it: npm install -g @anthropic-ai/claude-code"
+  CLAUDE_CONFIG_DIR=$(config_dir "$name") exec claude "$@"
 }
 
 cmd_new() {
@@ -256,10 +265,11 @@ cmd_transfer() {
   done
 
   cwd=$(session_meta "$dst" | cut -f1)
+  # env-prefix form works in zsh, bash, AND fish (VAR=x cmd does not).
   if [ "$to" = Default ] && [ ! -L "$dot" ]; then
     invoke="claude --resume $id"
   else
-    invoke="CLAUDE_CONFIG_DIR=\"\$HOME/.claude-profiles/$to\" claude --resume $id"
+    invoke="env CLAUDE_CONFIG_DIR=\"\$HOME/.claude-profiles/$to\" claude --resume $id"
   fi
   echo "Moved session $id: $from -> $to"
   if [ -n "$cwd" ]; then
@@ -288,7 +298,7 @@ cmd_version() {
 }
 
 cmd_help() {
-  sed -n '5,15p' "$self" | sed 's/^# \{0,3\}//'
+  sed -n '5,16p' "$self" | sed 's/^# \{0,3\}//'
 }
 
 cmd=${1:-help}
@@ -297,6 +307,7 @@ case $cmd in
   list)     cmd_list "$@" ;;
   active)   active_profile ;;
   use)      cmd_use "$@" ;;
+  run)      cmd_run "$@" ;;
   new)      cmd_new "$@" ;;
   delete)   cmd_delete "$@" ;;
   repatch)  cmd_repatch "$@" ;;

@@ -54,13 +54,31 @@ fi
 
 open /Applications/Claudes.app
 
-# Shell helper: the claudes CLI + per-profile commands (claude-work, …) + claude-as.
-# Sourced from the installed app so there's one stable path; the guard makes the
-# line inert if Claudes is ever removed.
-helper_line='[[ -f "/Applications/Claudes.app/Contents/Resources/claudes.zsh" ]] && source "/Applications/Claudes.app/Contents/Resources/claudes.zsh"  # claudes'
+# Shell helpers: the claudes CLI + per-profile commands (claude-work, …) +
+# claude-as, for every shell the user actually has (zsh, bash, fish).
+# Sourced from the installed app so there's one stable path; the guards make
+# the lines inert if Claudes is ever removed.
+res="/Applications/Claudes.app/Contents/Resources"
+
+zsh_line='[[ -f "'"$res"'/claudes.zsh" ]] && source "'"$res"'/claudes.zsh"  # claudes'
 if [[ -w $HOME/.zshrc || ! -e $HOME/.zshrc ]] && ! grep -qF '# claudes' "$HOME/.zshrc" 2>/dev/null; then
-  printf '\n%s\n' "$helper_line" >> "$HOME/.zshrc"
-  echo "✓ Shell helper added to ~/.zshrc (new shells get claude-<profile> commands)"
+  printf '\n%s\n' "$zsh_line" >> "$HOME/.zshrc"
+  echo "✓ Shell helper added to ~/.zshrc"
+fi
+
+bash_line='[ -f "'"$res"'/claudes.bash" ] && . "'"$res"'/claudes.bash"  # claudes'
+for rc in "$HOME/.bash_profile" "$HOME/.bashrc"; do
+  [[ -f $rc && -w $rc ]] || continue
+  grep -qF '# claudes' "$rc" 2>/dev/null && continue
+  printf '\n%s\n' "$bash_line" >> "$rc"
+  echo "✓ Shell helper added to ${rc/#$HOME/~}"
+done
+
+if [[ -d $HOME/.config/fish ]]; then
+  mkdir -p "$HOME/.config/fish/conf.d"
+  printf 'test -f "%s/claudes.fish"; and source "%s/claudes.fish"  # claudes\n' "$res" "$res" \
+    > "$HOME/.config/fish/conf.d/claudes.fish"
+  echo "✓ Shell helper added to ~/.config/fish/conf.d/claudes.fish"
 fi
 
 # `claudes` CLI on PATH for every shell (bash/fish/scripts), not just zsh.
