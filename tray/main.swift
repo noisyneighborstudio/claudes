@@ -821,27 +821,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         table.reloadData()
         table.selectRowIndexes([0], byExtendingSelection: false)
 
-        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 480, height: 220))
+        // Explicit frames — an NSScrollView has no intrinsic size, so
+        // stack-view/Auto Layout collapses it to zero inside an NSAlert.
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 262))
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 34, width: 480, height: 228))
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
 
-        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
-        popup.addItems(withTitles: targets.map { $0.label })
         let destLabel = NSTextField(labelWithString: "Transfer to:")
-        let destRow = NSStackView(views: [destLabel, popup])
-        destRow.orientation = .horizontal
-
-        let stack = NSStackView(views: [scroll, destRow])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 10
-        stack.frame = NSRect(x: 0, y: 0, width: 480, height: 260)
+        destLabel.sizeToFit()
+        destLabel.setFrameOrigin(NSPoint(x: 0, y: 7))
+        let popup = NSPopUpButton(frame: NSRect(x: destLabel.frame.maxX + 8, y: 1, width: 220, height: 26),
+                                  pullsDown: false)
+        popup.addItems(withTitles: targets.map { $0.label })
+        container.addSubview(scroll)
+        container.addSubview(destLabel)
+        container.addSubview(popup)
 
         let dialog = NSAlert()
         dialog.messageText = "Transfer a session from “\(srcLabel)”"
         dialog.informativeText = "Moves the session (transcript + per-session data) to another profile. Resume it there from this menu or with claude --resume."
-        dialog.accessoryView = stack
+        dialog.accessoryView = container
         dialog.addButton(withTitle: "Transfer")
         dialog.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
