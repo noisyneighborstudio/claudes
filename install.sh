@@ -4,7 +4,7 @@
 # Force a source build with: CLAUDES_FROM_SOURCE=1 ./install.sh
 set -euo pipefail
 
-REPO="sethwebster/claudes"
+REPO="noisyneighborstudio/claudes"
 
 install_from_release() {
   local tmp url

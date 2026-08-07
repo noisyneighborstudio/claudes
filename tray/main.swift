@@ -79,7 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let home = NSHomeDirectory()
     private var configRoot: String { home + "/.claude-profiles" }
     private let claudeAppPath = "/Applications/Claude.app"
-    private let repoAPI = "https://api.github.com/repos/sethwebster/claudes/releases/latest"
+    private let repoAPI = "https://api.github.com/repos/noisyneighborstudio/claudes/releases/latest"
 
     private var repatchInFlight = Set<String>()
     private var latestVersion: String?

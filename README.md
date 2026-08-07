@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sethwebster/claudes/releases/latest"><img src="https://img.shields.io/github/v/release/sethwebster/claudes?label=release&amp;color=151718" alt="Latest release"></a>
+  <a href="https://github.com/noisyneighborstudio/claudes/releases/latest"><img src="https://img.shields.io/github/v/release/noisyneighborstudio/claudes?label=release&amp;color=151718" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/platform-macOS-151718" alt="Platform: macOS">
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT-151718" alt="License: MIT"></a>
 </p>
@@ -36,14 +36,14 @@
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/sethwebster/claudes/main/install.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/noisyneighborstudio/claudes/main/install.sh | zsh
 ```
 
 <details>
 <summary>Prefer to read before you pipe?</summary>
 
 ```sh
-git clone https://github.com/sethwebster/claudes && cd claudes
+git clone https://github.com/noisyneighborstudio/claudes && cd claudes
 ./install.sh
 ```
 
