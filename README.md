@@ -28,7 +28,7 @@
 <br>
 
 <p align="center">
-  <img src="docs/menu-v3.png" alt="Claudes menu: profiles with running indicators, per-profile desktop and terminal actions, auto-repatch toggle" width="420">
+  <img src="docs/menu-v4.png" alt="Claudes menu: profiles with running and active indicators, per-profile actions — Set as Active, desktop app, terminal session, Transfer Session, delete" width="560">
 </p>
 
 <br>
