@@ -24,7 +24,17 @@ set -eu
 
 root="$HOME/.claude-profiles"
 dot="$HOME/.claude"
-self=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
+# Resolve symlinks (install.sh links this onto PATH) so sibling scripts and
+# the bundle Info.plist are found next to the real file, not the link.
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case $link in
+    /*) self=$link ;;
+    *)  self=$(dirname "$self")/$link ;;
+  esac
+done
+self=$(cd "$(dirname "$self")" && pwd)/$(basename "$self")
 scripts_dir=$(dirname "$self")
 
 die() { echo "claudes: $*" >&2; exit 1; }
