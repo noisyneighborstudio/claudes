@@ -45,16 +45,18 @@ Then:
 2. Sign in once in the new desktop app, and once in the CLI (`/login`)
 3. Optional: add Claudes.app to **System Settings → Login Items**
 
+The installer puts `claudes` on your PATH and wires shell helpers for **zsh**,
+**bash**, and **fish** — whichever you have. `./uninstall.sh` reverses all of
+it (add `--purge` to also remove profiles).
+
 ## Everyday use
 
-Every profile gets a command named after it, in whichever shells you have —
-install.sh wires **zsh**, **bash**, and **fish**:
+Every profile gets a command named after it:
 
 ```sh
 claude-expo               # Claude Code with the Expo profile
 claude-as Expo --resume   # same, explicit + tab-completable
-claudes run Expo          # shell-neutral (claudes is on PATH); works in scripts
-claudes run --next        # new session on the next profile in rotation
+claudes run Expo          # shell-neutral (works in scripts, any shell)
 ```
 
 Profile commands never shadow a real binary of the same name. In zsh they
@@ -66,6 +68,35 @@ creating one.
 > `export CLAUDE_CONFIG_DIR=$HOME/.claude-profiles/Work` in a repo's `.envrc`
 > (direnv).
 
+## Sessions & rotation
+
+Claude Code sessions belong to a profile, but they don't have to stay there.
+Claudes can list them, move them between profiles, and rotate new work across
+your accounts — handy when one account hits its usage limit mid-task.
+
+```sh
+claudes sessions                    # id · date · project · first prompt
+claudes transfer <id> --to Work     # move a session (transcript + todos + env)
+claudes transfer <id> --next        # …or to the next profile in rotation
+claudes run --next                  # new session on the next profile
+claudes desktop --next              # next profile's desktop app
+```
+
+And the one-liner for "keep going on another account":
+
+```sh
+claudes run --next --start-from-session=<id>
+```
+
+That finds the session wherever it lives, moves it to the next profile in
+rotation (skipping the one it's already on), jumps to the session's project
+directory, and resumes it there — same conversation, different account.
+
+Rotation is round-robin over all profiles (Default included). One shared
+pointer — `run`, `desktop`, and `transfer` advance it together. Transfers are
+also in the tray: each profile's menu has **Transfer Session…** with a session
+picker and a one-click "Open Now" after the move.
+
 ## The `claudes` CLI
 
 Everything the tray does is also a command — the tray shells out to the same
@@ -75,7 +106,7 @@ script, so the two can't drift:
 | -------------------------------- | --------------------------------------------- |
 | `claudes list`                   | Profiles: ✓ active, 🟢 running                |
 | `claudes use <Profile>`          | Switch the **global** active profile          |
-| `claudes run <Profile\|--next>`  | New Claude Code session, pinned or rotating; `--start-from-session=<id>` moves a session there and resumes it |
+| `claudes run <Profile\|--next>`  | New session, pinned or rotating; `--start-from-session=<id>` moves + resumes |
 | `claudes sessions [Profile]`     | List sessions (id · date · project · prompt)  |
 | `claudes transfer <id> --to <P>` | Move a session between profiles (`--next` rotates) |
 | `claudes new <Name>`             | Create a profile                              |
@@ -96,7 +127,9 @@ script, so the two can't drift:
 
 - Profiles at a glance — 🟢 running, ✓ active
 - Per profile: **Set as Active**, open desktop app, open a Claude Code
-  terminal session, transfer a session, reveal data dir, delete
+  terminal session (in your preferred terminal — Terminal, iTerm2, Warp,
+  Ghostty, kitty, Alacritty, WezTerm), **Transfer Session…**, reveal data
+  dir, delete
 - **New Profile…** — clones and patches Claude.app (progress in Terminal)
 - **Auto-repatch** — detects Claude Desktop updates (version drift between the
   original and each clone) and silently rebuilds idle clones in the background;
@@ -123,9 +156,10 @@ script, so the two can't drift:
    frameworks keep Anthropic's original signatures. Never `codesign --deep` —
    it strips Electron's JIT entitlements and the app crashes at launch.
 
-Uninstall reverses everything — wiring, PATH symlink, shell helpers — and
-restores `~/.claude` if it was migrated: `./uninstall.sh` (add `--purge` to
-also remove profiles).
+Session transfers move the transcript
+(`projects/<slug>/<id>.jsonl`) plus its per-session side data (`session-env`,
+`file-history`, `todos`) between config dirs — nothing is copied or left
+behind, and the destination refuses an id it already has.
 
 ## Troubleshooting
 
@@ -135,6 +169,7 @@ also remove profiles).
 | "Claudes can't control Terminal"          | System Settings → Privacy & Security → Automation → Claudes → enable Terminal  |
 | Keychain prompt on a clone's first login  | Normal (signing identity differs) — click **Always Allow**                     |
 | `claude` not found in profile terminal    | `npm install -g @anthropic-ai/claude-code`                                     |
+| `claudes` not found after an update       | Re-run install.sh (relinks the PATH symlink)                                   |
 | Clone crashes at launch (SIGTRAP/dyld)    | You may have re-signed it manually with `--deep` — re-patch                    |
 
 ## Releases & contributing
