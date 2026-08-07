@@ -163,11 +163,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(NSMenuItem(title: "No profiles yet", action: nil, keyEquivalent: ""))
         }
 
+        let active = activeProfileName()
+
         // Once profiles exist, the un-profiled original earns its own entry.
         if !profiles.isEmpty && claudeInstalled {
             let dot = isDefaultRunning() ? "🟢" : "⚪️"
             let item = NSMenuItem(title: "\(dot) Default", action: nil, keyEquivalent: "")
+            item.state = active == "Default" ? .on : .off
             let sub = NSMenu()
+            if active != "Default" {
+                sub.addItem(actionItem("Set as Active (Global)", #selector(setActiveDefault(_:)), nil))
+                sub.addItem(.separator())
+            }
             sub.addItem(actionItem("Open Desktop App", #selector(openDefaultDesktop(_:)), nil))
             sub.addItem(actionItem("Open Claude Code (\(preferredTerminal.name))", #selector(openDefaultTerminal(_:)), nil))
             let dTerms = installedTerminals()
@@ -197,7 +204,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 suffix = "  ⬆️ update pending"
             }
             let item = NSMenuItem(title: "\(marker) \(profile.name)\(suffix)", action: nil, keyEquivalent: "")
+            item.state = active == profile.name ? .on : .off
             let sub = NSMenu()
+            if active != profile.name {
+                sub.addItem(actionItem("Set as Active (Global)", #selector(setActiveProfile(_:)), profile.name))
+                sub.addItem(.separator())
+            }
             if profile.hasApp {
                 sub.addItem(actionItem("Open Desktop App", #selector(openDesktop(_:)), profile.name))
             }
@@ -510,9 +522,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    // MARK: - claudes CLI (single implementation of profile side effects)
+
+    private var cliPath: String { scriptsDir + "/claudes" }
+
+    @discardableResult
+    private func runCLI(_ args: [String]) -> (status: Int32, output: String) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        task.arguments = [cliPath] + args
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        do { try task.run() } catch { return (-1, error.localizedDescription) }
+        task.waitUntilExit()
+        let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        return (task.terminationStatus, out.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    // After `claudes use`, ~/.claude is a symlink to the active profile and the
+    // original default config lives at ~/.claude-profiles/Default.
+    private var isDefaultMigrated: Bool {
+        (try? fm.destinationOfSymbolicLink(atPath: home + "/.claude")) != nil
+    }
+
+    private func activeProfileName() -> String {
+        guard let dest = try? fm.destinationOfSymbolicLink(atPath: home + "/.claude") else { return "Default" }
+        return (dest as NSString).lastPathComponent
+    }
+
+    @objc private func setActiveDefault(_ sender: NSMenuItem) { setActive("Default") }
+
+    @objc private func setActiveProfile(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        setActive(name)
+    }
+
+    private func setActive(_ name: String) {
+        let r = runCLI(["use", name])
+        if r.status != 0 { alert("Couldn't switch active profile", r.output) }
+    }
+
     // Runs in the user's login shell so their PATH applies. nil name = default config.
     private func sessionCommand(_ name: String?) -> String {
-        let invoke = name.map { "CLAUDE_CONFIG_DIR=\"$HOME/.claude-profiles/\($0)\" claude" } ?? "claude"
+        // Once migrated, "Default" must be pinned explicitly — a bare `claude`
+        // would follow the ~/.claude symlink to whatever profile is active.
+        let effective = name ?? (isDefaultMigrated ? "Default" : nil)
+        let invoke = effective.map { "CLAUDE_CONFIG_DIR=\"$HOME/.claude-profiles/\($0)\" claude" } ?? "claude"
         return "if command -v claude >/dev/null 2>&1; then \(invoke); else echo 'Claude Code CLI not found. Install it first: npm install -g @anthropic-ai/claude-code'; fi"
     }
 
@@ -706,24 +762,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let choice = confirm.runModal()
         guard choice != .alertThirdButtonReturn else { return }
 
-        do {
-            let appPath = "/Applications/Claude-\(p.name).app"
-            if fm.fileExists(atPath: appPath) {
-                try fm.removeItem(atPath: appPath)
-            }
-            if choice == .alertSecondButtonReturn {
-                if fm.fileExists(atPath: p.dataDir) { try fm.removeItem(atPath: p.dataDir) }
-                if fm.fileExists(atPath: p.configDir) { try fm.removeItem(atPath: p.configDir) }
-            }
-        } catch {
-            alert("Delete failed", error.localizedDescription)
+        var args = ["delete", p.name, "--yes"]
+        if choice == .alertSecondButtonReturn { args.append("--everything") }
+        let result = runCLI(args)
+        if result.status != 0 {
+            alert("Delete failed", result.output)
         }
     }
 
     // MARK: - Session transfer (move a CLI session between profile config dirs)
 
     private func configDir(forProfileNamed name: String?) -> String {
-        name.map { configRoot + "/" + $0 } ?? home + "/.claude"
+        if let name = name { return configRoot + "/" + name }
+        return isDefaultMigrated ? configRoot + "/Default" : home + "/.claude"
     }
 
     @objc private func transferDefaultSession(_ sender: NSMenuItem) {
@@ -850,15 +901,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let session = sessions[max(0, table.selectedRow)]
         let dest = targets[max(0, popup.indexOfSelectedItem)]
-        let dstCfg = configDir(forProfileNamed: dest.name)
-        do {
-            try transferSession(session, from: srcCfg, to: dstCfg)
-        } catch {
-            alert("Transfer failed", error.localizedDescription)
+        let result = runCLI(["transfer", session.id, "--from", srcLabel, "--to", dest.label])
+        guard result.status == 0 else {
+            alert("Transfer failed", result.output)
             return
         }
 
-        let invoke = dest.name.map { "CLAUDE_CONFIG_DIR=\"$HOME/.claude-profiles/\($0)\" claude --resume \(session.id)" }
+        let effectiveDest = dest.name ?? (isDefaultMigrated ? "Default" : nil)
+        let invoke = effectiveDest.map { "CLAUDE_CONFIG_DIR=\"$HOME/.claude-profiles/\($0)\" claude --resume \(session.id)" }
             ?? "claude --resume \(session.id)"
         let resumeCmd = session.cwd.map { "cd \"\($0)\" && \(invoke)" } ?? invoke
 
@@ -878,38 +928,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             pb.setString(resumeCmd, forType: .string)
         default:
             break
-        }
-    }
-
-    private func transferSession(_ s: SessionInfo, from srcCfg: String, to dstCfg: String) throws {
-        let dstDir = dstCfg + "/projects/" + s.projectSlug
-        try fm.createDirectory(atPath: dstDir, withIntermediateDirectories: true)
-        let dstPath = dstDir + "/" + s.id + ".jsonl"
-        if fm.fileExists(atPath: dstPath) {
-            throw NSError(domain: "Claudes", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "The destination profile already has a session with this ID."
-            ])
-        }
-        try fm.moveItem(atPath: s.jsonlPath, toPath: dstPath)
-
-        // Per-session side data — moved when present so resume keeps env,
-        // file history, and todos; the transcript above is the required part.
-        for sub in ["session-env/" + s.id, "file-history/" + s.id] {
-            let from = srcCfg + "/" + sub
-            let to = dstCfg + "/" + sub
-            guard fm.fileExists(atPath: from), !fm.fileExists(atPath: to) else { continue }
-            try? fm.createDirectory(atPath: (to as NSString).deletingLastPathComponent,
-                                    withIntermediateDirectories: true)
-            try? fm.moveItem(atPath: from, toPath: to)
-        }
-        if let todos = try? fm.contentsOfDirectory(atPath: srcCfg + "/todos") {
-            let matched = todos.filter { $0.hasPrefix(s.id) }
-            if !matched.isEmpty {
-                try? fm.createDirectory(atPath: dstCfg + "/todos", withIntermediateDirectories: true)
-                for f in matched where !fm.fileExists(atPath: dstCfg + "/todos/" + f) {
-                    try? fm.moveItem(atPath: srcCfg + "/todos/" + f, toPath: dstCfg + "/todos/" + f)
-                }
-            }
         }
     }
 

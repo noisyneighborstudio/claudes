@@ -1,0 +1,277 @@
+#!/bin/zsh
+# claudes — cohesive CLI for Claude profiles. One authoritative implementation;
+# the tray app shells out to this for anything with side effects.
+#
+#   claudes list                          profiles (✓ active, 🟢 running)
+#   claudes active                        print the active profile name
+#   claudes use <Profile|Default>         switch the GLOBAL active profile
+#   claudes new <Name>                    create a profile (app clone + config dir)
+#   claudes delete <Name> [--everything] [--yes]
+#   claudes repatch [Name]                rebuild clone(s) after a Claude update
+#   claudes sessions [Profile|Default]    list Claude Code sessions
+#   claudes transfer <session-id> --to <Profile> [--from <Profile>]
+#   claudes desktop [Name]                open the desktop app
+#   claudes version
+#
+# Global switching: ~/.claude becomes a symlink into ~/.claude-profiles/, so
+# every consumer of the default config dir (CLI, editors, IDE plugins) follows
+# it. First `use` migrates the real ~/.claude to ~/.claude-profiles/Default.
+# CLAUDE_CONFIG_DIR still overrides per-invocation (claude-as / claude-<name>).
+set -euo pipefail
+
+root="$HOME/.claude-profiles"
+dot="$HOME/.claude"
+self="${0:A}"
+scripts_dir="${self:h}"
+
+die() { echo "claudes: $*" >&2; exit 1 }
+
+# All profile names: config dirs ∪ app clones, plus Default once migrated.
+profile_names() {
+  {
+    for d in "$root"/*(N/:t); do echo "$d"; done
+    for a in /Applications/Claude-*.app(N:t); do echo "${${a#Claude-}%.app}"; done
+  } | sort -fu
+}
+
+# Case-insensitive name -> canonical name. "default" is always valid.
+resolve_profile() {
+  local want=${1:l} n
+  [[ $want == default ]] && { echo "Default"; return 0 }
+  while IFS= read -r n; do
+    [[ ${n:l} == $want ]] && { echo "$n"; return 0 }
+  done < <(profile_names)
+  return 1
+}
+
+# Config dir for a profile. Default = migrated dir if ~/.claude is a symlink,
+# else ~/.claude itself.
+config_dir() {
+  if [[ $1 == Default ]]; then
+    [[ -L $dot ]] && echo "$root/Default" || echo "$dot"
+  else
+    echo "$root/$1"
+  fi
+}
+
+active_profile() {
+  if [[ -L $dot ]]; then
+    basename "$(readlink "$dot")"
+  else
+    echo "Default"
+  fi
+}
+
+profile_running() {  # desktop app instance
+  if [[ $1 == Default ]]; then
+    pgrep -f "/Applications/Claude.app/Contents/MacOS/Claude" >/dev/null 2>&1
+  else
+    pgrep -f "user-data-dir=$HOME/Library/Application Support/Claude-$1" >/dev/null 2>&1
+  fi
+}
+
+cmd_list() {
+  local act=$(active_profile) n mark run
+  {
+    echo "Default"
+    profile_names
+  } | sort -fu | while IFS= read -r n; do
+    [[ $n == $act ]] && mark="✓" || mark=" "
+    profile_running "$n" && run="🟢" || run="⚪️"
+    echo "$mark $run $n"
+  done
+}
+
+cmd_use() {
+  local name target
+  name=$(resolve_profile "${1:?usage: claudes use <Profile|Default>}") \
+    || die "no profile named '$1' (see: claudes list)"
+
+  # One-time migration: real ~/.claude -> ~/.claude-profiles/Default.
+  if [[ -e $dot && ! -L $dot ]]; then
+    [[ -e $root/Default ]] && die "both $dot and $root/Default exist — merge or remove one, then retry"
+    mkdir -p "$root"
+    mv "$dot" "$root/Default"
+    echo "Migrated $dot -> $root/Default"
+  fi
+
+  target=$(config_dir "$name")
+  [[ $name == Default ]] || mkdir -p "$target"
+  [[ -d $target ]] || die "profile config dir missing: $target"
+  ln -sfh "$target" "$dot"
+  echo "Active profile: $name  ($dot -> $target)"
+  echo "New sessions everywhere use it; running sessions keep the profile they started with."
+  [[ -n ${CLAUDE_CONFIG_DIR:-} ]] && \
+    echo "note: CLAUDE_CONFIG_DIR is set in this shell and overrides the global switch here."
+  true
+}
+
+cmd_new() {
+  local name=${1:?usage: claudes new <Name>}
+  exec "$scripts_dir/make-claude-profile.sh" "$name"
+}
+
+cmd_repatch() {
+  exec "$scripts_dir/repatch-claude-profiles.sh" "$@"
+}
+
+cmd_delete() {
+  local name="" everything=0 yes=0 arg
+  for arg in "$@"; do
+    case $arg in
+      --everything) everything=1 ;;
+      --yes) yes=1 ;;
+      -*) die "unknown flag: $arg" ;;
+      *) name=$arg ;;
+    esac
+  done
+  [[ -n $name ]] || die "usage: claudes delete <Name> [--everything] [--yes]"
+  name=$(resolve_profile "$name") || die "no profile named '$name'"
+  [[ $name == Default ]] && die "Default can't be deleted"
+  [[ $(active_profile) == $name ]] && die "'$name' is the active profile — run 'claudes use <other>' first"
+  profile_running "$name" && die "'$name' is running — quit it first"
+
+  local app="/Applications/Claude-$name.app"
+  local data="$HOME/Library/Application Support/Claude-$name"
+  local cfg="$root/$name"
+  if (( ! yes )); then
+    echo -n "Delete profile '$name'$( (( everything )) && echo ' AND its data/config' )? [y/N] "
+    read -r reply
+    [[ ${reply:l} == y* ]] || { echo "aborted"; exit 1 }
+  fi
+  [[ -d $app ]] && rm -rf "$app"
+  if (( everything )); then
+    [[ -d $data ]] && rm -rf "$data"
+    [[ -d $cfg ]] && rm -rf "$cfg"
+  fi
+  echo "Deleted '$name'$( (( everything )) && echo ' (app, data, config)' || echo ' (app only)' )"
+}
+
+# First "cwd" and first user prompt from the head of a session transcript.
+session_meta() {  # path -> cwd \t snippet
+  local head cwd snippet
+  head=$(head -c 16384 "$1" 2>/dev/null) || true
+  cwd=$(print -r -- "$head" | grep -o '"cwd":"[^"]*"' | head -1 | sed 's/^"cwd":"//; s/"$//')
+  snippet=$(print -r -- "$head" | grep -o '"content":"[^"]*' | head -1 | cut -c12- | cut -c1-70)
+  [[ -z $snippet ]] && snippet=$(print -r -- "$head" | grep -o '"text":"[^"]*' | head -1 | cut -c9- | cut -c1-70)
+  printf '%s\t%s\n' "$cwd" "${snippet:-"(no prompt)"}"
+}
+
+cmd_sessions() {
+  local name cfg f meta
+  name=$(resolve_profile "${1:-Default}") || die "no profile named '$1'"
+  cfg=$(config_dir "$name")
+  local files=("$cfg"/projects/*/*.jsonl(N))
+  (( ${#files} )) || die "no sessions in '$name' ($cfg/projects)"
+  stat -f '%m %N' "${files[@]}" | sort -rn | while read -r _ f; do
+    meta=$(session_meta "$f")
+    local cwd=${meta%%$'\t'*}
+    local proj=${cwd:t}
+    [[ -z $proj ]] && proj=${f:h:t}
+    printf '%s  %s  %-20s  %s\n' \
+      "${${f:t}%.jsonl}" \
+      "$(date -r "$(stat -f '%m' "$f")" '+%Y-%m-%d %H:%M')" \
+      "$proj" \
+      "${meta#*$'\t'}"
+  done
+}
+
+cmd_transfer() {
+  local id="" from="" to="" arg prev=""
+  for arg in "$@"; do
+    case $prev in
+      --to) to=$arg; prev=""; continue ;;
+      --from) from=$arg; prev=""; continue ;;
+    esac
+    case $arg in
+      --to|--from) prev=$arg ;;
+      -*) die "unknown flag: $arg" ;;
+      *) id=$arg ;;
+    esac
+  done
+  [[ -n $id && -n $to ]] || die "usage: claudes transfer <session-id> --to <Profile> [--from <Profile>]"
+  to=$(resolve_profile "$to") || die "no profile named '$to'"
+
+  # Locate the source transcript: given profile, or search all of them.
+  local src_cfg="" jsonl="" n
+  if [[ -n $from ]]; then
+    from=$(resolve_profile "$from") || die "no profile named '$from'"
+    src_cfg=$(config_dir "$from")
+    local hits=("$src_cfg"/projects/*/"$id".jsonl(N))
+    (( ${#hits} )) || die "session $id not found in '$from'"
+    jsonl=$hits[1]
+  else
+    while IFS= read -r n; do
+      local cfg=$(config_dir "$n")
+      local hits=("$cfg"/projects/*/"$id".jsonl(N))
+      if (( ${#hits} )); then from=$n; src_cfg=$cfg; jsonl=$hits[1]; break; fi
+    done < <({ echo Default; profile_names } | sort -fu)
+    [[ -n $jsonl ]] || die "session $id not found in any profile"
+  fi
+  [[ $from == $to ]] && die "session is already in '$to'"
+
+  local dst_cfg=$(config_dir "$to")
+  local slug=${jsonl:h:t}
+  local dst="$dst_cfg/projects/$slug/$id.jsonl"
+  [[ -e $dst ]] && die "'$to' already has session $id"
+  mkdir -p "$dst_cfg/projects/$slug"
+  mv "$jsonl" "$dst"
+
+  # Per-session side data (env, edited-file history, todos) — best-effort.
+  local sub
+  for sub in "session-env/$id" "file-history/$id"; do
+    if [[ -e $src_cfg/$sub && ! -e $dst_cfg/$sub ]]; then
+      mkdir -p "${dst_cfg}/${sub:h}"
+      mv "$src_cfg/$sub" "$dst_cfg/$sub" 2>/dev/null || true
+    fi
+  done
+  for f in "$src_cfg"/todos/"$id"*(N); do
+    mkdir -p "$dst_cfg/todos"
+    mv "$f" "$dst_cfg/todos/" 2>/dev/null || true
+  done
+
+  local cwd=$(session_meta "$dst" | cut -f1)
+  local invoke="claude --resume $id"
+  [[ $to != Default || -L $dot ]] && \
+    invoke="CLAUDE_CONFIG_DIR=\"\$HOME/.claude-profiles/$to\" claude --resume $id"
+  echo "Moved session $id: $from -> $to"
+  echo "Resume: ${cwd:+cd \"$cwd\" && }$invoke"
+}
+
+cmd_desktop() {
+  local name
+  name=$(resolve_profile "${1:-Default}") || die "no profile named '$1'"
+  if [[ $name == Default ]]; then
+    open -a "/Applications/Claude.app"
+  else
+    open -a "/Applications/Claude-$name.app"
+  fi
+}
+
+cmd_version() {
+  local plist="$scripts_dir/../Info.plist"
+  if [[ -f $plist ]]; then
+    /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist"
+  else
+    git -C "$scripts_dir" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0"
+  fi
+}
+
+cmd_help() {
+  sed -n '5,15p' "$self" | sed 's/^# \{0,3\}//'
+}
+
+case "${1:-help}" in
+  list)     shift; cmd_list "$@" ;;
+  active)   shift; active_profile ;;
+  use)      shift; cmd_use "$@" ;;
+  new)      shift; cmd_new "$@" ;;
+  delete)   shift; cmd_delete "$@" ;;
+  repatch)  shift; cmd_repatch "$@" ;;
+  sessions) shift; cmd_sessions "$@" ;;
+  transfer) shift; cmd_transfer "$@" ;;
+  desktop)  shift; cmd_desktop "$@" ;;
+  version)  shift; cmd_version ;;
+  help|-h|--help) cmd_help ;;
+  *) die "unknown command: $1 (try: claudes help)" ;;
+esac

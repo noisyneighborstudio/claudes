@@ -54,7 +54,7 @@ fi
 
 open /Applications/Claudes.app
 
-# Shell helper: per-profile commands (claude-work, claude-expo, …) + claude-as.
+# Shell helper: the claudes CLI + per-profile commands (claude-work, …) + claude-as.
 # Sourced from the installed app so there's one stable path; the guard makes the
 # line inert if Claudes is ever removed.
 helper_line='[[ -f "/Applications/Claudes.app/Contents/Resources/claudes.zsh" ]] && source "/Applications/Claudes.app/Contents/Resources/claudes.zsh"  # claudes'

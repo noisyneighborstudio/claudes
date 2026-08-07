@@ -2,12 +2,18 @@
 #   source "/Applications/Claudes.app/Contents/Resources/claudes.zsh"
 #
 # Gives you:
+#   claudes                     the cohesive CLI (list/use/sessions/transfer/…);
+#                               `claudes use <Profile>` switches globally
 #   claude-<profile>            per-profile commands, e.g. profile "Expo" -> `claude-expo`
 #   claude-as <Profile> [args]  explicit form, tab-completable
 #
-# Nothing global is switched — only the invoked session uses the profile.
+# claude-<profile> / claude-as pin ONE invocation via CLAUDE_CONFIG_DIR and
+# always win over the global active profile.
 
 _claudes_root="$HOME/.claude-profiles"
+_claudes_helper_dir="${${(%):-%x}:A:h}"
+
+claudes() { "$_claudes_helper_dir/claudes" "$@" }
 
 # Map a lowercased suffix ("expo") back to the real profile dir name ("Expo").
 _claudes_profile_dir() {

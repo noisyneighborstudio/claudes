@@ -44,11 +44,34 @@ claude-as Expo --resume   # same, explicit form with args
 For per-project auto-switching, use direnv: `export CLAUDE_CONFIG_DIR=$HOME/.claude-profiles/Work`
 in a repo's `.envrc`.
 
+## The `claudes` CLI
+
+Everything the tray does is also a command (the tray shells out to the same
+script, so they can't drift):
+
+```zsh
+claudes list                        # profiles: ✓ active, 🟢 running
+claudes use Work                    # switch the GLOBAL active profile
+claudes sessions [Profile]          # list Claude Code sessions
+claudes transfer <id> --to Work     # move a session between profiles
+claudes new <Name> | delete <Name> [--everything] | repatch [Name]
+claudes desktop [Name]              # open a profile's desktop app
+```
+
+**Global switching:** `claudes use` turns `~/.claude` into a symlink pointing at
+the active profile (the first switch migrates your original `~/.claude` to
+`~/.claude-profiles/Default`). From then on, *anything* that reads the default
+config dir — plain `claude` in any terminal, editors, IDE plugins — follows the
+active profile. Running sessions keep the profile they started with, and
+`claude-<profile>` / `CLAUDE_CONFIG_DIR` still pin a single invocation
+regardless of the global setting.
+
 ## What the tray does
 
-- Lists profiles with a running indicator (🟢/⚪️)
-- Per profile: open the desktop app, open a Claude Code terminal session,
-  reveal the data dir, delete the profile
+- Lists profiles with a running indicator (🟢/⚪️) and a ✓ on the active one
+- Per profile: set as active (global), open the desktop app, open a Claude Code
+  terminal session, reveal the data dir, transfer a session to another
+  profile, delete the profile
 - **New Profile…** — clones and patches Claude.app (progress shown in Terminal)
 - **Auto-repatch** — the tray detects when Claude Desktop has updated (version
   drift between the original and each clone) and silently rebuilds idle clones
@@ -59,8 +82,9 @@ in a repo's `.envrc`.
 - **Self-update** — Claudes checks GitHub releases and offers a one-click
   "Update Claudes to vX.Y.Z" when a newer version ships.
 
-Nothing global is ever switched — each terminal session gets its own
-`CLAUDE_CONFIG_DIR`; plain `claude` elsewhere is untouched.
+`claude-<profile>` commands never switch anything global — they pin one
+invocation via `CLAUDE_CONFIG_DIR`. The global default is whatever
+`claudes use` (or the tray's **Set as Active**) last selected.
 
 ## How the clone works (and why it's shaped this way)
 
