@@ -16,6 +16,25 @@ struct Profile {
     let configDir: String
 }
 
+// A Claude Code CLI session: projects/<slug>/<uuid>.jsonl inside a config dir.
+struct SessionInfo {
+    let id: String
+    let projectSlug: String
+    let jsonlPath: String
+    let cwd: String?
+    let snippet: String
+    let mtime: Date
+}
+
+// Data source for the session picker table (cell-based, single column).
+final class SessionListController: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+    var rows: [String] = []
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+    func tableView(_ tableView: NSTableView, objectValueFor tableColumn: NSTableColumn?, row: Int) -> Any? {
+        rows[row]
+    }
+}
+
 func appleScriptEscape(_ s: String) -> String {
     s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
 }
@@ -163,6 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             sub.addItem(actionItem("Copy Command:  claude", #selector(copyDefaultCommand(_:)), nil))
             sub.addItem(actionItem("Reveal Data Dir", #selector(revealDefaultData(_:)), nil))
+            sub.addItem(actionItem("Transfer Session…", #selector(transferDefaultSession(_:)), nil))
             item.submenu = sub
             menu.addItem(item)
         }
@@ -194,6 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             sub.addItem(actionItem("Copy Command:  claude-\(profile.name.lowercased())", #selector(copyCommand(_:)), profile.name))
             sub.addItem(actionItem("Reveal Data Dir", #selector(revealData(_:)), profile.name))
+            sub.addItem(actionItem("Transfer Session…", #selector(transferProfileSession(_:)), profile.name))
             sub.addItem(.separator())
             sub.addItem(actionItem("Delete Profile…", #selector(deleteProfile(_:)), profile.name))
             item.submenu = sub
@@ -696,6 +717,198 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         } catch {
             alert("Delete failed", error.localizedDescription)
+        }
+    }
+
+    // MARK: - Session transfer (move a CLI session between profile config dirs)
+
+    private func configDir(forProfileNamed name: String?) -> String {
+        name.map { configRoot + "/" + $0 } ?? home + "/.claude"
+    }
+
+    @objc private func transferDefaultSession(_ sender: NSMenuItem) {
+        transferUI(fromName: nil)
+    }
+
+    @objc private func transferProfileSession(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        transferUI(fromName: name)
+    }
+
+    private func discoverSessions(configDir: String) -> [SessionInfo] {
+        let projectsDir = configDir + "/projects"
+        var sessions: [SessionInfo] = []
+        guard let slugs = try? fm.contentsOfDirectory(atPath: projectsDir) else { return [] }
+        for slug in slugs where !slug.hasPrefix(".") {
+            let dir = projectsDir + "/" + slug
+            guard let files = try? fm.contentsOfDirectory(atPath: dir) else { continue }
+            for file in files where file.hasSuffix(".jsonl") {
+                let path = dir + "/" + file
+                let mtime = ((try? fm.attributesOfItem(atPath: path))?[.modificationDate] as? Date) ?? .distantPast
+                let (cwd, snippet) = sessionPreview(path)
+                sessions.append(SessionInfo(id: String(file.dropLast(".jsonl".count)),
+                                            projectSlug: slug, jsonlPath: path,
+                                            cwd: cwd, snippet: snippet, mtime: mtime))
+            }
+        }
+        return sessions.sorted { $0.mtime > $1.mtime }
+    }
+
+    // Read the head of the transcript for the working dir and first user prompt.
+    private func sessionPreview(_ path: String) -> (cwd: String?, snippet: String) {
+        guard let fh = FileHandle(forReadingAtPath: path) else { return (nil, "") }
+        defer { try? fh.close() }
+        guard let data = try? fh.read(upToCount: 16384),
+              let text = String(data: data, encoding: .utf8) else { return (nil, "") }
+        var cwd: String?
+        var snippet: String?
+        for line in text.split(separator: "\n") {
+            guard let obj = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else { continue }
+            if cwd == nil { cwd = obj["cwd"] as? String }
+            if snippet == nil, obj["type"] as? String == "user",
+               let msg = obj["message"] as? [String: Any] {
+                if let s = msg["content"] as? String {
+                    snippet = s
+                } else if let parts = msg["content"] as? [[String: Any]] {
+                    snippet = parts.compactMap { $0["text"] as? String }.first
+                }
+            }
+            if cwd != nil && snippet != nil { break }
+        }
+        let clean = (snippet ?? "")
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        return (cwd, clean.isEmpty ? "(no prompt)" : String(clean.prefix(80)))
+    }
+
+    private func sessionRowLabel(_ s: SessionInfo) -> String {
+        let df = DateFormatter()
+        df.dateStyle = .short
+        df.timeStyle = .short
+        let project = s.cwd.map { ($0 as NSString).lastPathComponent } ?? s.projectSlug
+        return "\(df.string(from: s.mtime))  ·  \(project)  ·  \(s.snippet)"
+    }
+
+    private func transferUI(fromName: String?) {
+        let srcCfg = configDir(forProfileNamed: fromName)
+        let srcLabel = fromName ?? "Default"
+        let sessions = discoverSessions(configDir: srcCfg)
+        guard !sessions.isEmpty else {
+            alert("No sessions in “\(srcLabel)”", "This profile has no Claude Code sessions yet.")
+            return
+        }
+        var targets: [(name: String?, label: String)] = []
+        if fromName != nil { targets.append((nil, "Default")) }
+        for p in discoverProfiles() where p.name != fromName {
+            targets.append((p.name, p.name))
+        }
+        guard !targets.isEmpty else {
+            alert("No destination profile", "Create another profile first (🤖 → New Profile…).")
+            return
+        }
+
+        let controller = SessionListController()
+        controller.rows = sessions.map { sessionRowLabel($0) }
+        let table = NSTableView()
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("session"))
+        column.width = 460
+        table.addTableColumn(column)
+        table.headerView = nil
+        table.usesAlternatingRowBackgroundColors = true
+        table.allowsEmptySelection = false
+        table.dataSource = controller
+        table.delegate = controller
+        table.reloadData()
+        table.selectRowIndexes([0], byExtendingSelection: false)
+
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 480, height: 220))
+        scroll.documentView = table
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+
+        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+        popup.addItems(withTitles: targets.map { $0.label })
+        let destLabel = NSTextField(labelWithString: "Transfer to:")
+        let destRow = NSStackView(views: [destLabel, popup])
+        destRow.orientation = .horizontal
+
+        let stack = NSStackView(views: [scroll, destRow])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        stack.frame = NSRect(x: 0, y: 0, width: 480, height: 260)
+
+        let dialog = NSAlert()
+        dialog.messageText = "Transfer a session from “\(srcLabel)”"
+        dialog.informativeText = "Moves the session (transcript + per-session data) to another profile. Resume it there from this menu or with claude --resume."
+        dialog.accessoryView = stack
+        dialog.addButton(withTitle: "Transfer")
+        dialog.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard dialog.runModal() == .alertFirstButtonReturn else { return }
+
+        let session = sessions[max(0, table.selectedRow)]
+        let dest = targets[max(0, popup.indexOfSelectedItem)]
+        let dstCfg = configDir(forProfileNamed: dest.name)
+        do {
+            try transferSession(session, from: srcCfg, to: dstCfg)
+        } catch {
+            alert("Transfer failed", error.localizedDescription)
+            return
+        }
+
+        let invoke = dest.name.map { "CLAUDE_CONFIG_DIR=\"$HOME/.claude-profiles/\($0)\" claude --resume \(session.id)" }
+            ?? "claude --resume \(session.id)"
+        let resumeCmd = session.cwd.map { "cd \"\($0)\" && \(invoke)" } ?? invoke
+
+        let done = NSAlert()
+        done.messageText = "Session transferred to “\(dest.label)”"
+        done.informativeText = "Open it now, or copy the resume command for later."
+        done.addButton(withTitle: "Open Now")
+        done.addButton(withTitle: "Copy Command")
+        done.addButton(withTitle: "Done")
+        NSApp.activate(ignoringOtherApps: true)
+        switch done.runModal() {
+        case .alertFirstButtonReturn:
+            launchSession(resumeCmd, slug: dest.label, in: preferredTerminal)
+        case .alertSecondButtonReturn:
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.setString(resumeCmd, forType: .string)
+        default:
+            break
+        }
+    }
+
+    private func transferSession(_ s: SessionInfo, from srcCfg: String, to dstCfg: String) throws {
+        let dstDir = dstCfg + "/projects/" + s.projectSlug
+        try fm.createDirectory(atPath: dstDir, withIntermediateDirectories: true)
+        let dstPath = dstDir + "/" + s.id + ".jsonl"
+        if fm.fileExists(atPath: dstPath) {
+            throw NSError(domain: "Claudes", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "The destination profile already has a session with this ID."
+            ])
+        }
+        try fm.moveItem(atPath: s.jsonlPath, toPath: dstPath)
+
+        // Per-session side data — moved when present so resume keeps env,
+        // file history, and todos; the transcript above is the required part.
+        for sub in ["session-env/" + s.id, "file-history/" + s.id] {
+            let from = srcCfg + "/" + sub
+            let to = dstCfg + "/" + sub
+            guard fm.fileExists(atPath: from), !fm.fileExists(atPath: to) else { continue }
+            try? fm.createDirectory(atPath: (to as NSString).deletingLastPathComponent,
+                                    withIntermediateDirectories: true)
+            try? fm.moveItem(atPath: from, toPath: to)
+        }
+        if let todos = try? fm.contentsOfDirectory(atPath: srcCfg + "/todos") {
+            let matched = todos.filter { $0.hasPrefix(s.id) }
+            if !matched.isEmpty {
+                try? fm.createDirectory(atPath: dstCfg + "/todos", withIntermediateDirectories: true)
+                for f in matched where !fm.fileExists(atPath: dstCfg + "/todos/" + f) {
+                    try? fm.moveItem(atPath: srcCfg + "/todos/" + f, toPath: dstCfg + "/todos/" + f)
+                }
+            }
         }
     }
 
