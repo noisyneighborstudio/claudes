@@ -75,7 +75,7 @@ script, so the two can't drift:
 | -------------------------------- | --------------------------------------------- |
 | `claudes list`                   | Profiles: ✓ active, 🟢 running                |
 | `claudes use <Profile>`          | Switch the **global** active profile          |
-| `claudes run <Profile\|--next>`  | New Claude Code session, pinned or rotating   |
+| `claudes run <Profile\|--next>`  | New Claude Code session, pinned or rotating; `--start-from-session=<id>` moves a session there and resumes it |
 | `claudes sessions [Profile]`     | List sessions (id · date · project · prompt)  |
 | `claudes transfer <id> --to <P>` | Move a session between profiles (`--next` rotates) |
 | `claudes new <Name>`             | Create a profile                              |

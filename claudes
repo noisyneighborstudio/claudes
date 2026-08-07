@@ -5,7 +5,7 @@
 #   claudes list                          profiles (✓ active, 🟢 running)
 #   claudes active                        print the active profile name
 #   claudes use <Profile|Default>         switch the GLOBAL active profile
-#   claudes run <Profile|--next> [args]   run Claude Code pinned to a profile
+#   claudes run <Profile|--next> [--start-from-session=<id>] [claude args...]
 #   claudes new <Name>                    create a profile (app clone + config dir)
 #   claudes delete <Name> [--everything] [--yes]
 #   claudes repatch [Name]                rebuild clone(s) after a Claude update
@@ -145,15 +145,44 @@ rotation_next() {
 }
 
 cmd_run() {
-  [ $# -ge 1 ] || die "usage: claudes run <Profile|Default|--next> [claude args...]"
-  if [ "$1" = --next ]; then
+  usage="usage: claudes run <Profile|--next> [--start-from-session=<id>] [claude args...]"
+  name="" sess="" rotate=0
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --next) rotate=1; shift ;;
+      --start-from-session=*) sess=${1#--start-from-session=}; shift ;;
+      -*) break ;;  # remaining args belong to claude
+      *) if [ -z "$name" ] && [ "$rotate" = 0 ]; then name=$1; shift; else break; fi ;;
+    esac
+  done
+  [ -n "$name" ] && [ "$rotate" = 1 ] && die "$usage (a profile name and --next are mutually exclusive)"
+  { [ -n "$name" ] || [ "$rotate" = 1 ]; } || die "$usage"
+  command -v claude >/dev/null 2>&1 || die "Claude Code CLI not found — install it: npm install -g @anthropic-ai/claude-code"
+
+  src=""
+  if [ -n "$sess" ]; then
+    hit=$(find_session "$sess") || die "session $sess not found in any profile"
+    src=$(printf '%s\n' "$hit" | cut -f1)
+  fi
+  if [ "$rotate" = 1 ]; then
     name=$(rotation_next)
+    [ -n "$sess" ] && [ "$name" = "$src" ] && name=$(rotation_next)  # already there; step past
     echo "claudes: rotating to profile '$name'" >&2
   else
-    name=$(resolve_profile "$1") || die "no profile named '$1' (see: claudes list)"
+    name=$(resolve_profile "$name") || die "no profile named '$name' (see: claudes list)"
   fi
-  shift
-  command -v claude >/dev/null 2>&1 || die "Claude Code CLI not found — install it: npm install -g @anthropic-ai/claude-code"
+
+  if [ -n "$sess" ]; then
+    [ "$src" = "$name" ] || cmd_transfer "$sess" --from "$src" --to "$name" >&2
+    hit=$(find_session "$sess" "$name") || die "session $sess missing after transfer"
+    cwd=$(session_meta "$(printf '%s\n' "$hit" | cut -f3)" | cut -f1)
+    if [ -n "$cwd" ] && [ -d "$cwd" ]; then
+      cd "$cwd"
+    elif [ -n "$cwd" ]; then
+      echo "claudes: project dir $cwd no longer exists; resuming from $PWD" >&2
+    fi
+    CLAUDE_CONFIG_DIR=$(config_dir "$name") exec claude --resume "$sess" "$@"
+  fi
   CLAUDE_CONFIG_DIR=$(config_dir "$name") exec claude "$@"
 }
 
@@ -212,6 +241,26 @@ session_meta() {  # path -> cwd \t snippet
   printf '%s\t%s\n' "$cwd" "${snippet:-(no prompt)}"
 }
 
+# Locate a session's transcript. Echoes "profile<TAB>config-dir<TAB>jsonl";
+# searches every profile when no profile is given.
+find_session() {
+  fs_id=$1
+  if [ -n "${2:-}" ]; then
+    fs_cfg=$(config_dir "$2")
+    for fs_f in "$fs_cfg"/projects/*/"$fs_id".jsonl; do
+      [ -e "$fs_f" ] && printf '%s\t%s\t%s\n' "$2" "$fs_cfg" "$fs_f" && return 0
+    done
+    return 1
+  fi
+  for fs_n in $( { echo Default; profile_names; } | sort -fu ); do
+    fs_cfg=$(config_dir "$fs_n")
+    for fs_f in "$fs_cfg"/projects/*/"$fs_id".jsonl; do
+      [ -e "$fs_f" ] && printf '%s\t%s\t%s\n' "$fs_n" "$fs_cfg" "$fs_f" && return 0
+    done
+  done
+  return 1
+}
+
 cmd_sessions() {
   name=$(resolve_profile "${1:-Default}") || die "no profile named '$1'"
   cfg=$(config_dir "$name")
@@ -260,24 +309,15 @@ cmd_transfer() {
   fi
 
   # Locate the source transcript: given profile, or search all of them.
-  src_cfg="" jsonl=""
   if [ -n "$from" ]; then
     from=$(resolve_profile "$from") || die "no profile named '$from'"
-    src_cfg=$(config_dir "$from")
-    for f in "$src_cfg"/projects/*/"$id".jsonl; do
-      [ -e "$f" ] && jsonl=$f && break
-    done
-    [ -n "$jsonl" ] || die "session $id not found in '$from'"
+    hit=$(find_session "$id" "$from") || die "session $id not found in '$from'"
   else
-    for n in $( { echo Default; profile_names; } | sort -fu ); do
-      cfg=$(config_dir "$n")
-      for f in "$cfg"/projects/*/"$id".jsonl; do
-        [ -e "$f" ] && from=$n && src_cfg=$cfg && jsonl=$f && break
-      done
-      [ -n "$jsonl" ] && break
-    done
-    [ -n "$jsonl" ] || die "session $id not found in any profile"
+    hit=$(find_session "$id") || die "session $id not found in any profile"
+    from=$(printf '%s\n' "$hit" | cut -f1)
   fi
+  src_cfg=$(printf '%s\n' "$hit" | cut -f2)
+  jsonl=$(printf '%s\n' "$hit" | cut -f3)
   if [ "$to" = "--next" ]; then
     to=$(rotation_next)
     [ "$to" = "$from" ] && to=$(rotation_next)  # rotating onto the source is a no-op; step past it
