@@ -5,13 +5,13 @@
 #   claudes list                          profiles (✓ active, 🟢 running)
 #   claudes active                        print the active profile name
 #   claudes use <Profile|Default>         switch the GLOBAL active profile
-#   claudes run <Profile|Default> [args]  run Claude Code pinned to a profile
+#   claudes run <Profile|--next> [args]   run Claude Code pinned to a profile
 #   claudes new <Name>                    create a profile (app clone + config dir)
 #   claudes delete <Name> [--everything] [--yes]
 #   claudes repatch [Name]                rebuild clone(s) after a Claude update
 #   claudes sessions [Profile|Default]    list Claude Code sessions
 #   claudes transfer <session-id> --to <Profile> [--from <Profile>]
-#   claudes desktop [Name]                open the desktop app
+#   claudes desktop [Name|--next]         open the desktop app
 #   claudes version
 #
 # Global switching: ~/.claude becomes a symlink into ~/.claude-profiles/, so
@@ -126,9 +126,32 @@ cmd_use() {
   true
 }
 
+# Round-robin over all profiles (Default included), shared by `run --next`
+# and `desktop --next`. The pointer is the last profile handed out.
+rotation_next() {
+  state_file="$root/.rotation"
+  names=$({ echo Default; profile_names; } | sort -fu)
+  last=""
+  [ -f "$state_file" ] && last=$(cat "$state_file" 2>/dev/null)
+  next="" take_next=0
+  for n in $names; do
+    if [ "$take_next" = 1 ]; then next=$n; break; fi
+    [ "$n" = "$last" ] && take_next=1
+  done
+  [ -n "$next" ] || next=$(printf '%s\n' "$names" | head -1)
+  mkdir -p "$root"
+  printf '%s' "$next" > "$state_file"
+  echo "$next"
+}
+
 cmd_run() {
-  [ $# -ge 1 ] || die "usage: claudes run <Profile|Default> [claude args...]"
-  name=$(resolve_profile "$1") || die "no profile named '$1' (see: claudes list)"
+  [ $# -ge 1 ] || die "usage: claudes run <Profile|Default|--next> [claude args...]"
+  if [ "$1" = --next ]; then
+    name=$(rotation_next)
+    echo "claudes: rotating to profile '$name'" >&2
+  else
+    name=$(resolve_profile "$1") || die "no profile named '$1' (see: claudes list)"
+  fi
   shift
   command -v claude >/dev/null 2>&1 || die "Claude Code CLI not found — install it: npm install -g @anthropic-ai/claude-code"
   CLAUDE_CONFIG_DIR=$(config_dir "$name") exec claude "$@"
@@ -290,7 +313,12 @@ cmd_transfer() {
 }
 
 cmd_desktop() {
-  name=$(resolve_profile "${1:-Default}") || die "no profile named '$1'"
+  if [ "${1:-}" = --next ]; then
+    name=$(rotation_next)
+    echo "claudes: rotating to profile '$name'" >&2
+  else
+    name=$(resolve_profile "${1:-Default}") || die "no profile named '$1'"
+  fi
   if [ "$name" = Default ]; then
     open -a "/Applications/Claude.app"
   else

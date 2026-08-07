@@ -55,6 +55,7 @@ script, so they can't drift):
 ```zsh
 claudes list                        # profiles: ✓ active, 🟢 running
 claudes use Work                    # switch the GLOBAL active profile
+claudes run --next                  # new session on the next profile in rotation
 claudes sessions [Profile]          # list Claude Code sessions
 claudes transfer <id> --to Work     # move a session between profiles
 claudes new <Name> | delete <Name> [--everything] | repatch [Name]
