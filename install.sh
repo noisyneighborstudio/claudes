@@ -63,6 +63,17 @@ if [[ -w $HOME/.zshrc || ! -e $HOME/.zshrc ]] && ! grep -qF '# claudes' "$HOME/.
   echo "✓ Shell helper added to ~/.zshrc (new shells get claude-<profile> commands)"
 fi
 
+# `claudes` CLI on PATH for every shell (bash/fish/scripts), not just zsh.
+cli_src="/Applications/Claudes.app/Contents/Resources/claudes"
+for bindir in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
+  [[ $bindir == "$HOME/.local/bin" ]] && mkdir -p "$bindir" 2>/dev/null
+  if [[ -d $bindir && -w $bindir ]]; then
+    ln -sf "$cli_src" "$bindir/claudes"
+    echo "✓ claudes CLI linked at $bindir/claudes"
+    break
+  fi
+done
+
 echo ""
 echo "✓ Installed $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/Claudes.app/Contents/Info.plist 2>/dev/null | sed 's/^/v/'). Look for the Claudes icon in the menu bar."
 echo "  Optional: add Claudes to System Settings → Login Items."

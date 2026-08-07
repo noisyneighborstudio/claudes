@@ -529,7 +529,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @discardableResult
     private func runCLI(_ args: [String]) -> (status: Int32, output: String) {
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
         task.arguments = [cliPath] + args
         let pipe = Pipe()
         task.standardOutput = pipe
