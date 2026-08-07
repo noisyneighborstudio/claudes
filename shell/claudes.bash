@@ -9,8 +9,9 @@
 
 _claudes_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
-claudes() { "$_claudes_dir/claudes" "$@"; }
-claude-as() { "$_claudes_dir/claudes" run "$@"; }
+# Bake the path into the bodies (see claudes.zsh) and never shadow a PATH-installed claudes.
+command -v claudes >/dev/null 2>&1 || eval "claudes() { \"$_claudes_dir/claudes\" \"\$@\"; }"
+eval "claude-as() { \"$_claudes_dir/claudes\" run \"\$@\"; }"
 
 _claudes_define_commands() {
   local d name cmd

@@ -6,13 +6,11 @@
 
 set -g _claudes_dir (dirname (status filename))
 
-function claudes
-    "$_claudes_dir/claudes" $argv
+# Bake the path into the bodies (see claudes.zsh) and never shadow a PATH-installed claudes.
+if not command -q claudes
+    eval "function claudes; \"$_claudes_dir/claudes\" \$argv; end"
 end
-
-function claude-as
-    "$_claudes_dir/claudes" run $argv
-end
+eval "function claude-as; \"$_claudes_dir/claudes\" run \$argv; end"
 
 for _claudes_d in $HOME/.claude-profiles/*/
     set -l _claudes_name (basename $_claudes_d)

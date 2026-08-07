@@ -10,15 +10,21 @@
 # claude-<profile> / claude-as pin ONE invocation via CLAUDE_CONFIG_DIR and
 # always win over the global active profile.
 
-_claudes_root="$HOME/.claude-profiles"
+# Paths are baked into function bodies at source time (not read from globals
+# at call time) so the functions survive shells that re-serialize functions
+# without their variables (snapshots, some subshell contexts).
+
 _claudes_helper_dir="${${(%):-%x}:A:h}"
 
-claudes() { "$_claudes_helper_dir/claudes" "$@" }
+# Prefer the PATH-installed `claudes` symlink; only define a function when absent.
+if ! command -v claudes >/dev/null 2>&1; then
+  functions[claudes]='"'$_claudes_helper_dir'/claudes" "$@"'
+fi
 
 # Map a lowercased suffix ("expo") back to the real profile dir name ("Expo").
 _claudes_profile_dir() {
   local d
-  for d in "$_claudes_root"/*(N/:t); do
+  for d in "$HOME/.claude-profiles"/*(N/:t); do
     if [[ ${d:l} == ${1:l} ]]; then
       echo "$d"
       return 0
@@ -31,22 +37,22 @@ claude-as() {
   local profile=${1:-}
   if [[ -z $profile ]]; then
     echo "usage: claude-as <Profile> [claude args…]" >&2
-    echo "profiles: $(ls "$_claudes_root" 2>/dev/null | tr '\n' ' ')" >&2
+    echo "profiles: $(ls "$HOME/.claude-profiles" 2>/dev/null | tr '\n' ' ')" >&2
     return 1
   fi
   shift
   local dir
   if ! dir=$(_claudes_profile_dir "$profile"); then
-    echo "claude-as: no profile named '$profile' (looked in $_claudes_root)" >&2
+    echo "claude-as: no profile named '$profile' (looked in $HOME/.claude-profiles)" >&2
     return 1
   fi
-  CLAUDE_CONFIG_DIR="$_claudes_root/$dir" claude "$@"
+  CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/$dir" claude "$@"
 }
 
 # Define claude-<profile> for every profile that exists at shell startup.
 _claudes_define_commands() {
   local d cmd
-  for d in "$_claudes_root"/*(N/:t); do
+  for d in "$HOME/.claude-profiles"/*(N/:t); do
     cmd="claude-${d:l}"
     # never shadow a real command of the same name
     (( $+commands[$cmd] )) && continue
@@ -81,7 +87,7 @@ command_not_found_handler() {
 # Tab completion for claude-as profile names.
 _claude_as_complete() {
   local -a profiles
-  profiles=(${(f)"$(ls "$_claudes_root" 2>/dev/null)"})
+  profiles=(${(f)"$(ls "$HOME/.claude-profiles" 2>/dev/null)"})
   _describe 'profile' profiles
 }
 (( $+functions[compdef] )) && compdef _claude_as_complete claude-as
