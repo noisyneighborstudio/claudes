@@ -43,19 +43,26 @@ die() { echo "claudes: $*" >&2; exit 1; }
 
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
+valid_profile_name() {
+  [ -n "$1" ] || return 1
+  case $1 in *[!A-Za-z0-9]*) return 1 ;; *) return 0 ;; esac
+}
+
 # All profile names: config dirs ∪ app clones (one per line, sorted, unique).
 profile_names() {
   {
     if [ -d "$root" ]; then
       for d in "$root"/*/; do
         [ -d "$d" ] || continue
-        basename "$d"
+        name=$(basename "$d")
+        if valid_profile_name "$name"; then echo "$name"; fi
       done
     fi
     for a in /Applications/Claude-*.app; do
       [ -d "$a" ] || continue
       b=$(basename "$a" .app)
-      echo "${b#Claude-}"
+      name=${b#Claude-}
+      if valid_profile_name "$name"; then echo "$name"; fi
     done
   } | sort -fu
 }
@@ -287,10 +294,14 @@ cmd_run() {
 # holds the `claudes` link, so the CLI and its shims stay together.
 bin_dir() {
   for d in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
-    if [ -L "$d/claudes" ] && [ -w "$d" ]; then echo "$d"; return 0; fi
+    if [ -L "$d/claudes" ] && [ "$(readlink "$d/claudes")" = "$self" ] && [ -w "$d" ]; then
+      echo "$d"
+      return 0
+    fi
   done
   for d in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
     [ "$d" = "$HOME/.local/bin" ] && mkdir -p "$d" 2>/dev/null
+    if [ -e "$d/claudes" ] || [ -L "$d/claudes" ]; then continue; fi
     if [ -d "$d" ] && [ -w "$d" ]; then echo "$d"; return 0; fi
   done
   return 1
@@ -310,14 +321,16 @@ cmd_shims() {
   if [ "$remove" = 0 ]; then
     [ -x "$src" ] || die "shim script missing: $src"
     wanted=$({ echo "claude-as"; { echo Default; profile_names; } | sort -fu | while IFS= read -r n; do
-      echo "claude-$(lower "$n")"
+      suffix=$(lower "$n")
+      [ "$suffix" = as ] && continue
+      echo "claude-$suffix"
     done; })
   fi
 
   # Prune ours only — identified by the symlink target, never a real command.
   for f in "$dir"/claude-*; do
     [ -L "$f" ] || continue
-    case $(readlink "$f") in */claude-as) ;; *) continue ;; esac
+    [ "$(readlink "$f")" = "$src" ] || continue
     if ! printf '%s\n' "$wanted" | grep -qx "$(basename "$f")"; then
       rm -f "$f"
       echo "✓ removed $f"
@@ -332,10 +345,10 @@ cmd_shims() {
         echo "claudes: $dir/$b exists and isn't ours — skipped" >&2
         continue
       fi
-      case $(readlink "$dir/$b") in
-        */claude-as) ;;
-        *) echo "claudes: $dir/$b exists and isn't ours — skipped" >&2; continue ;;
-      esac
+      if [ "$(readlink "$dir/$b")" != "$src" ]; then
+        echo "claudes: $dir/$b exists and isn't ours — skipped" >&2
+        continue
+      fi
     fi
     ln -sf "$src" "$dir/$b"
   done

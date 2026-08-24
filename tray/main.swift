@@ -275,6 +275,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Profile discovery
 
+    private func isValidProfileName(_ name: String) -> Bool {
+        name.range(of: #"^[A-Za-z0-9]+$"#, options: .regularExpression) != nil
+    }
+
     private func discoverProfiles() -> [Profile] {
         var names = Set<String>()
         var withApp = Set<String>()
@@ -282,13 +286,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let apps = try? fm.contentsOfDirectory(atPath: "/Applications") {
             for app in apps where app.hasPrefix("Claude-") && app.hasSuffix(".app") {
                 let name = String(app.dropFirst("Claude-".count).dropLast(".app".count))
+                guard isValidProfileName(name) else { continue }
                 names.insert(name)
                 withApp.insert(name)
             }
         }
         // "Default" (the migrated ~/.claude) is the dedicated menu entry, not a profile.
         if let cfgs = try? fm.contentsOfDirectory(atPath: configRoot) {
-            for cfg in cfgs where !cfg.hasPrefix(".") && cfg != "Default" {
+            for cfg in cfgs where cfg != "Default" && isValidProfileName(cfg) {
                 names.insert(cfg)
             }
         }
@@ -766,15 +771,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.alert("Invalid name", "Use ASCII letters and numbers only, e.g. Work or Client2.")
             return
         }
-        if name.lowercased() == "default" {
-            self.alert("Reserved name", "“Default” is the un-profiled Claude — it already has a menu entry.")
+        if ["as", "default"].contains(name.lowercased()) {
+            self.alert("Reserved name", "“\(name)” conflicts with a built-in Claudes command. Pick another name.")
             return
         }
         if fm.fileExists(atPath: "/Applications/Claude-\(name).app") {
             self.alert("Profile exists", "Claude-\(name).app is already in /Applications. Pick another name, or delete the existing profile first.")
             return
         }
-        runInTerminal("\"\(scriptsDir)/make-claude-profile.sh\" \(name)")
+        runInTerminal("\"\(scriptsDir)/claudes\" new \(name)")
     }
 
     @objc private func repatchAll(_ sender: NSMenuItem) {

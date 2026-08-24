@@ -83,14 +83,38 @@ fi
 
 # `claudes` CLI on PATH for every shell (bash/fish/scripts), not just zsh.
 cli_src="/Applications/Claudes.app/Contents/Resources/claudes"
+linked_bin=""
 for bindir in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
   [[ $bindir == "$HOME/.local/bin" ]] && mkdir -p "$bindir" 2>/dev/null
   if [[ -d $bindir && -w $bindir ]]; then
+    dest="$bindir/claudes"
+    if [[ -e $dest || -L $dest ]] && [[ ! -L $dest || $(readlink "$dest") != "$cli_src" ]]; then
+      echo "✗ $dest exists and isn't owned by Claudes; leaving it unchanged." >&2
+      break
+    fi
     ln -sf "$cli_src" "$bindir/claudes"
+    linked_bin="$bindir"
     echo "✓ claudes CLI linked at $bindir/claudes"
     break
   fi
 done
+
+if [[ $linked_bin == "$HOME/.local/bin" && :$PATH: != *":$HOME/.local/bin:"* ]]; then
+  path_line='export PATH="$HOME/.local/bin:$PATH"  # claudes-path'
+  for rc in "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc"; do
+    [[ $rc == "$HOME/.zshrc" || -f $rc ]] || continue
+    [[ -w $rc || ! -e $rc ]] || continue
+    grep -qF '# claudes-path' "$rc" 2>/dev/null && continue
+    printf '\n%s\n' "$path_line" >> "$rc"
+    echo "✓ ~/.local/bin added to ${rc/#$HOME/~}"
+  done
+  fish_stub="$HOME/.config/fish/conf.d/claudes.fish"
+  if [[ -f $fish_stub ]] && ! grep -qF '# claudes-path' "$fish_stub"; then
+    printf 'fish_add_path "$HOME/.local/bin"  # claudes-path\n' >> "$fish_stub"
+    echo "✓ ~/.local/bin added to fish PATH"
+  fi
+  export PATH="$HOME/.local/bin:$PATH"
+fi
 
 # claude-as / claude-<profile> as real executables, so apps, editors and
 # scripts that never source a shell rc can pin a profile too.

@@ -8,6 +8,7 @@ die() { echo "✗ $1" >&2; exit 1 }
 
 name=${1:?usage: make-claude-profile.sh <Name>   (letters/numbers only, e.g. Work)}
 [[ $name =~ ^[A-Za-z0-9]+$ ]] || die "Profile name must be letters/numbers only, got: $name"
+[[ ${name:l} != as && ${name:l} != default ]] || die "Profile name is reserved: $name"
 
 src="/Applications/Claude.app"
 dst="/Applications/Claude-$name.app"

@@ -27,9 +27,9 @@ fi
 # Filter helper lines out via a temp file + `cat >` — writes through rc files
 # that are symlinks into a dotfiles repo, which BSD `sed -i` refuses to edit.
 for rc in "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc"; do
-  if grep -qF '# claudes' "$rc" 2>/dev/null; then
+  if grep -qE '# claudes(-path)?$' "$rc" 2>/dev/null; then
     tmp=$(mktemp)
-    grep -v '# claudes$' "$rc" > "$tmp" || true
+    grep -vE '# claudes(-path)?$' "$rc" > "$tmp" || true
     cat "$tmp" > "$rc"
     rm -f "$tmp"
     echo "✓ Removed shell helper line from ${rc/#$HOME/~}"
@@ -43,9 +43,13 @@ fi
 
 # PATH symlinks — the CLI plus the claude-as / claude-<profile> shims, only
 # where they actually point into Claudes.app.
+cli_target="/Applications/Claudes.app/Contents/Resources/claudes"
+shim_target="/Applications/Claudes.app/Contents/Resources/claude-as"
 for bindir in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
   for link in "$bindir/claudes" "$bindir"/claude-*; do
-    [[ -L $link && $(readlink "$link") == *Claudes.app* ]] || continue
+    [[ -L $link ]] || continue
+    target=$(readlink "$link")
+    [[ $target == "$cli_target" || $target == "$shim_target" ]] || continue
     rm "$link"
     echo "✓ Removed $link"
   done
