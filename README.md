@@ -49,7 +49,7 @@ git clone https://github.com/noisyneighborstudio/claudes && cd claudes
 
 </details>
 
-The installer prefers the signed release and falls back to building from source (prompting for Xcode Command Line Tools if missing). It puts `claudes` on your `PATH` and wires shell helpers for **zsh**, **bash**, and **fish** — whichever you have.
+The installer prefers the signed release and falls back to building from source (prompting for Xcode Command Line Tools if missing). It puts `claudes` and the per-profile commands on your `PATH`, and adds tab completion for **zsh**, **bash**, and **fish** — whichever you have.
 
 Then:
 
@@ -82,10 +82,10 @@ Every profile gets a command named after it:
 ```sh
 claude-expo               # Claude Code with the Expo profile
 claude-as Expo --resume   # same, explicit + tab-completable
-claudes run Expo          # shell-neutral (works in scripts, any shell)
+claudes run Expo          # what both of the above call
 ```
 
-Profile commands never shadow a real binary of the same name. In zsh they appear the moment a profile is created; in bash and fish, open a new shell first.
+These are real executables on `PATH` (symlinks next to `claudes`), not shell functions — so editors, GUI apps, `Makefile`s, cron jobs and non-interactive shells can use them too, with no rc file sourced. `claudes new`/`delete` keep them in sync; `claudes shims` re-syncs by hand. A name that already exists as a real binary is never overwritten.
 
 > [!TIP]
 > **Per-project auto-switching.** Put `export CLAUDE_CONFIG_DIR=$HOME/.claude-profiles/Work` in a repo's `.envrc` (direnv).
@@ -143,6 +143,7 @@ Everything the tray does is also a command — the tray shells out to the same s
 | `claudes delete <Name>`          | Delete (`--everything` removes data + config)                                |
 | `claudes repatch [Name]`         | Rebuild clone(s) after a Claude update                                       |
 | `claudes desktop [Name\|--next\|--best]` | Open a profile's desktop app                                         |
+| `claudes shims`                  | Re-sync `claude-as` / `claude-<profile>` on `PATH`                            |
 
 > [!NOTE]
 > **Global switching.** `claudes use` turns `~/.claude` into a symlink to the active profile (the first switch migrates your original `~/.claude` to `~/.claude-profiles/Default`). From then on, *anything* that reads the default config dir — plain `claude` in any terminal, editors, IDE plugins — follows the active profile. Running sessions keep the profile they started with, and `claude-<profile>` / `CLAUDE_CONFIG_DIR` still pin a single invocation regardless of the global setting.
@@ -196,6 +197,7 @@ Transfers move the transcript (`projects/<slug>/<id>.jsonl`) plus its per-sessio
 | Keychain prompt on a clone's first login   | Normal (signing identity differs) — click **Always Allow**                    |
 | `claude` not found in a profile terminal   | `npm install -g @anthropic-ai/claude-code`                                    |
 | `claudes` not found after an update        | Re-run `install.sh` (relinks the PATH symlink)                                |
+| `claude-<profile>` not found               | `claudes shims` (needs a writable `/opt/homebrew/bin`, `/usr/local/bin` or `~/.local/bin`) |
 | Clone crashes at launch (SIGTRAP / dyld)   | Re-signed manually with `--deep`? Re-patch                                    |
 
 <br>

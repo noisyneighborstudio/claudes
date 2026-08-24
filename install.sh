@@ -54,10 +54,10 @@ fi
 
 open /Applications/Claudes.app
 
-# Shell helpers: the claudes CLI + per-profile commands (claude-work, …) +
-# claude-as, for every shell the user actually has (zsh, bash, fish).
-# Sourced from the installed app so there's one stable path; the guards make
-# the lines inert if Claudes is ever removed.
+# Shell helpers: tab completion for claudes / claude-as, for every shell the
+# user actually has (zsh, bash, fish). The commands themselves go on PATH
+# below. Sourced from the installed app so there's one stable path; the guards
+# make the lines inert if Claudes is ever removed.
 res="/Applications/Claudes.app/Contents/Resources"
 
 zsh_line='[[ -f "'"$res"'/claudes.zsh" ]] && source "'"$res"'/claudes.zsh"  # claudes'
@@ -91,6 +91,10 @@ for bindir in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
     break
   fi
 done
+
+# claude-as / claude-<profile> as real executables, so apps, editors and
+# scripts that never source a shell rc can pin a profile too.
+"$cli_src" shims || echo "✗ Couldn't create profile commands — run 'claudes shims' once a PATH dir is writable." >&2
 
 echo ""
 echo "✓ Installed $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/Claudes.app/Contents/Info.plist 2>/dev/null | sed 's/^/v/'). Look for the Claudes icon in the menu bar."

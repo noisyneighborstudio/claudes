@@ -1,28 +1,17 @@
-# Claudes shell helper for bash — sourced from ~/.bash_profile / ~/.bashrc
-# (install.sh adds the line). Gives you:
-#   claudes                     the cohesive CLI (also on PATH via install.sh)
-#   claude-as <Profile> [args]  run Claude Code pinned to a profile
-#   claude-<profile>            per-profile commands, e.g. Expo -> claude-expo
+# Claudes shell helper for bash — tab completion only.
 #
-# macOS ships bash 3.2 (no command_not_found_handle), so claude-<profile>
-# commands for profiles created after shell startup need a new shell.
+# The commands themselves (`claudes`, `claude-as`, `claude-<profile>`) are real
+# executables on PATH, installed by `claudes shims`, so every app, editor and
+# script gets them — not just shells that sourced this file.
 
-_claudes_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-
-# Bake the path into the bodies (see claudes.zsh) and never shadow a PATH-installed claudes.
-command -v claudes >/dev/null 2>&1 || eval "claudes() { \"$_claudes_dir/claudes\" \"\$@\"; }"
-eval "claude-as() { \"$_claudes_dir/claudes\" run \"\$@\"; }"
-
-_claudes_define_commands() {
-  local d name cmd
-  for d in "$HOME/.claude-profiles"/*/; do
-    [ -d "$d" ] || continue
-    name=$(basename "$d")
-    cmd="claude-$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
-    # never shadow a real command of the same name
-    command -v "$cmd" >/dev/null 2>&1 && continue
-    eval "$cmd() { claude-as \"$name\" \"\$@\"; }"
-  done
+_claudes_complete() {
+  local words="list active use run best new delete repatch sessions transfer desktop shims version help"
+  [ "$COMP_CWORD" -gt 1 ] && words=$(ls "$HOME/.claude-profiles" 2>/dev/null)
+  COMPREPLY=($(compgen -W "$words" -- "${COMP_WORDS[COMP_CWORD]}"))
 }
-_claudes_define_commands
-unset -f _claudes_define_commands
+complete -F _claudes_complete claudes
+
+_claude_as_complete() {
+  COMPREPLY=($(compgen -W "$(ls "$HOME/.claude-profiles" 2>/dev/null)" -- "${COMP_WORDS[COMP_CWORD]}"))
+}
+complete -F _claude_as_complete claude-as

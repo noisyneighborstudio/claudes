@@ -41,13 +41,14 @@ if [[ -f $HOME/.config/fish/conf.d/claudes.fish ]]; then
   echo "✓ Removed fish helper stub"
 fi
 
-# PATH symlink — only if it actually points into Claudes.app.
+# PATH symlinks — the CLI plus the claude-as / claude-<profile> shims, only
+# where they actually point into Claudes.app.
 for bindir in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
-  link="$bindir/claudes"
-  if [[ -L $link && $(readlink "$link") == *Claudes.app* ]]; then
+  for link in "$bindir/claudes" "$bindir"/claude-*; do
+    [[ -L $link && $(readlink "$link") == *Claudes.app* ]] || continue
     rm "$link"
     echo "✓ Removed $link"
-  fi
+  done
 done
 
 rm -f "$HOME/.warp/launch_configurations"/claudes-*.yaml

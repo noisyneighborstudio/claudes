@@ -80,6 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var configRoot: String { home + "/.claude-profiles" }
     private let claudeAppPath = "/Applications/Claude.app"
     private let repoAPI = "https://api.github.com/repos/noisyneighborstudio/claudes/releases/latest"
+    private let newIssueURL = "https://github.com/noisyneighborstudio/claudes/issues/new"
 
     private var repatchInFlight = Set<String>()
     private var latestVersion: String?
@@ -126,6 +127,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         startWatchingApplications()
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) { self.autoRepatchTick() }
         Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in self.autoRepatchTick() }
+
+        // Keep claude-as / claude-<profile> on PATH in step with the profile
+        // list — real executables, so apps and scripts get them too, and
+        // upgrades from a shell-function-only version heal themselves.
+        DispatchQueue.global(qos: .utility).async { self.runCLI(["shims"]) }
 
         // Self-update check: shortly after launch, then every 6 hours.
         DispatchQueue.main.asyncAfter(deadline: .now() + 30) { self.checkForSelfUpdate() }
@@ -254,6 +260,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(termItem)
         }
         menu.addItem(.separator())
+        menu.addItem(actionItem("Report a Bug…", #selector(reportBug(_:)), nil))
         let versionItem = NSMenuItem(title: "Claudes v\(currentVersion)", action: nil, keyEquivalent: "")
         menu.addItem(versionItem)
         menu.addItem(NSMenuItem(title: "Quit Claudes", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
@@ -504,6 +511,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func downloadClaude(_ sender: NSMenuItem) {
         NSWorkspace.shared.open(URL(string: "https://claude.ai/download")!)
+    }
+
+    @objc private func reportBug(_ sender: NSMenuItem) {
+        let body = """
+        ## What happened?
+        <!-- Tell us what went wrong. -->
+
+        ## What did you expect?
+        <!-- Tell us what you expected to happen. -->
+
+        ## Steps to reproduce
+        1.
+
+        ## Environment
+        - Claudes version: \(currentVersion)
+        - macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)
+        """
+        guard var components = URLComponents(string: newIssueURL) else {
+            alert("Couldn't open GitHub Issues", "Visit github.com/noisyneighborstudio/claudes/issues to report the bug.")
+            return
+        }
+        components.queryItems = [
+            URLQueryItem(name: "title", value: "[Bug] "),
+            URLQueryItem(name: "body", value: body),
+        ]
+        guard let url = components.url, NSWorkspace.shared.open(url) else {
+            alert("Couldn't open GitHub Issues", "Visit github.com/noisyneighborstudio/claudes/issues to report the bug.")
+            return
+        }
     }
 
     @objc private func openDesktop(_ sender: NSMenuItem) {

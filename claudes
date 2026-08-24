@@ -13,6 +13,7 @@
 #   claudes sessions [Profile|Default]    list Claude Code sessions
 #   claudes transfer <id> --to <Profile>|--next|--best [--from <Profile>]
 #   claudes desktop [Name|--next|--best]  open the desktop app
+#   claudes shims [--remove]              sync claude-as / claude-<profile> on PATH
 #   claudes version
 #
 # Global switching: ~/.claude becomes a symlink into ~/.claude-profiles/, so
@@ -265,7 +266,7 @@ cmd_run() {
     name=$(pick_best "$src") || die "no profile with a readable token — run 'claudes best' to see why"
     echo "claudes: best available profile is '$name'" >&2
   else
-    name=$(resolve_profile "$name") || die "no profile named '$name' (see: claudes list)"
+    want=$name; name=$(resolve_profile "$want") || die "no profile named '$want' (see: claudes list)"
   fi
 
   if [ -n "$sess" ]; then
@@ -282,9 +283,74 @@ cmd_run() {
   CLAUDE_CONFIG_DIR=$(config_dir "$name") exec claude "$@"
 }
 
+# First writable PATH dir we install into — preferring the one that already
+# holds the `claudes` link, so the CLI and its shims stay together.
+bin_dir() {
+  for d in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
+    if [ -L "$d/claudes" ] && [ -w "$d" ]; then echo "$d"; return 0; fi
+  done
+  for d in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
+    [ "$d" = "$HOME/.local/bin" ] && mkdir -p "$d" 2>/dev/null
+    if [ -d "$d" ] && [ -w "$d" ]; then echo "$d"; return 0; fi
+  done
+  return 1
+}
+
+# claude-as + claude-<profile> as real executables on PATH (symlinks to
+# Resources/claude-as), so every app and script can pin a profile — a shell
+# function only ever existed inside shells that sourced our helper.
+cmd_shims() {
+  remove=0
+  [ "${1:-}" = --remove ] && remove=1
+  src="$scripts_dir/claude-as"
+  [ -f "$src" ] || src="$scripts_dir/shell/claude-as"  # dev-tree layout
+  dir=$(bin_dir) || die "no writable PATH dir (/opt/homebrew/bin, /usr/local/bin, ~/.local/bin)"
+
+  wanted=""
+  if [ "$remove" = 0 ]; then
+    [ -x "$src" ] || die "shim script missing: $src"
+    wanted=$({ echo "claude-as"; { echo Default; profile_names; } | sort -fu | while IFS= read -r n; do
+      echo "claude-$(lower "$n")"
+    done; })
+  fi
+
+  # Prune ours only — identified by the symlink target, never a real command.
+  for f in "$dir"/claude-*; do
+    [ -L "$f" ] || continue
+    case $(readlink "$f") in */claude-as) ;; *) continue ;; esac
+    if ! printf '%s\n' "$wanted" | grep -qx "$(basename "$f")"; then
+      rm -f "$f"
+      echo "✓ removed $f"
+    fi
+  done
+  [ "$remove" = 1 ] && return 0
+
+  printf '%s\n' "$wanted" | while IFS= read -r b; do
+    [ -n "$b" ] || continue
+    if [ -e "$dir/$b" ] || [ -L "$dir/$b" ]; then
+      if [ ! -L "$dir/$b" ]; then
+        echo "claudes: $dir/$b exists and isn't ours — skipped" >&2
+        continue
+      fi
+      case $(readlink "$dir/$b") in
+        */claude-as) ;;
+        *) echo "claudes: $dir/$b exists and isn't ours — skipped" >&2; continue ;;
+      esac
+    fi
+    ln -sf "$src" "$dir/$b"
+  done
+  echo "✓ claude-as and claude-<profile> linked in $dir"
+}
+
+# Profile list changed: keep PATH in step, but never fail the operation over it.
+sync_shims() {
+  ( cmd_shims ) || echo "claudes: PATH shims not updated — run 'claudes shims'" >&2
+}
+
 cmd_new() {
   [ $# -ge 1 ] || die "usage: claudes new <Name>"
-  exec "$scripts_dir/make-claude-profile.sh" "$1"
+  "$scripts_dir/make-claude-profile.sh" "$1"
+  sync_shims
 }
 
 cmd_repatch() {
@@ -302,7 +368,7 @@ cmd_delete() {
     esac
   done
   [ -n "$name" ] || die "usage: claudes delete <Name> [--everything] [--yes]"
-  name=$(resolve_profile "$name") || die "no profile named '$name'"
+  want=$name; name=$(resolve_profile "$want") || die "no profile named '$want'"
   [ "$name" = Default ] && die "Default can't be deleted"
   [ "$(active_profile)" = "$name" ] && die "'$name' is the active profile — run 'claudes use <other>' first"
   profile_running "$name" && die "'$name' is running — quit it first"
@@ -324,6 +390,7 @@ cmd_delete() {
   else
     echo "Deleted '$name' (app only)"
   fi
+  sync_shims
 }
 
 # First "cwd" and first user prompt from the head of a session transcript.
@@ -404,12 +471,12 @@ cmd_transfer() {
   done
   { [ -n "$id" ] && [ -n "$to" ]; } || die "usage: claudes transfer <id> --to <Profile>|--next|--best [--from <Profile>]"
   case $to in --next|--best) ;; *)
-    to=$(resolve_profile "$to") || die "no profile named '$to'"
+    want=$to; to=$(resolve_profile "$want") || die "no profile named '$want'"
   esac
 
   # Locate the source transcript: given profile, or search all of them.
   if [ -n "$from" ]; then
-    from=$(resolve_profile "$from") || die "no profile named '$from'"
+    want=$from; from=$(resolve_profile "$want") || die "no profile named '$want'"
     hit=$(find_session "$id" "$from") || die "session $id not found in '$from'"
   else
     hit=$(find_session "$id") || die "session $id not found in any profile"
@@ -489,7 +556,7 @@ cmd_version() {
 }
 
 cmd_help() {
-  sed -n '5,17p' "$self" | sed 's/^# \{0,3\}//'
+  sed -n '5,18p' "$self" | sed 's/^# \{0,3\}//'
 }
 
 cmd=${1:-help}
@@ -506,6 +573,7 @@ case $cmd in
   sessions) cmd_sessions "$@" ;;
   transfer) cmd_transfer "$@" ;;
   desktop)  cmd_desktop "$@" ;;
+  shims)    cmd_shims "$@" ;;
   version)  cmd_version ;;
   help|-h|--help) cmd_help ;;
   *) die "unknown command: $cmd (try: claudes help)" ;;

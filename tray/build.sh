@@ -23,8 +23,8 @@ ver=${ver:-0.0.0}
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $ver" "$app/Contents/Info.plist"
 echo "Version: $ver"
 cp ../make-claude-profile.sh ../repatch-claude-profiles.sh ../claudes "$app/Contents/Resources/"
-cp ../shell/claudes.zsh ../shell/claudes.bash ../shell/claudes.fish "$app/Contents/Resources/"
-chmod +x "$app/Contents/Resources/"*.sh "$app/Contents/Resources/claudes"
+cp ../shell/claudes.zsh ../shell/claudes.bash ../shell/claudes.fish ../shell/claude-as "$app/Contents/Resources/"
+chmod +x "$app/Contents/Resources/"*.sh "$app/Contents/Resources/claudes" "$app/Contents/Resources/claude-as"
 
 # App icon: build multi-res icns from claudes.png
 iconset=$(mktemp -d)/claudes.iconset
