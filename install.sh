@@ -79,7 +79,7 @@ if [[ -d $HOME/.config/fish ]]; then
   fish_stub="$HOME/.config/fish/conf.d/claudes.fish"
   fish_line='test -f "'"$res"'/claudes.fish"; and source "'"$res"'/claudes.fish"  # claudes'
   if ! grep -qF "$fish_line" "$fish_stub" 2>/dev/null; then
-    printf '%s\n' "$fish_line" >> "$fish_stub"
+    printf '\n%s\n' "$fish_line" >> "$fish_stub"
   fi
   echo "✓ Shell helper added to ~/.config/fish/conf.d/claudes.fish"
 fi
@@ -88,6 +88,13 @@ fi
 cli_src="/Applications/Claudes.app/Contents/Resources/claudes"
 linked_bin=""
 link_collision=0
+active_claudes=$(command -v claudes 2>/dev/null || true)
+if [[ -n $active_claudes && $active_claudes != "$cli_src" ]]; then
+  if [[ ! -L $active_claudes || $(readlink "$active_claudes") != "$cli_src" ]]; then
+    echo "✗ The active claudes command at $active_claudes isn't owned by Claudes." >&2
+    link_collision=1
+  fi
+fi
 candidate_bins=()
 for bindir in ${(s.:.)PATH} "$HOME/.local/bin"; do
   case "$bindir" in
@@ -97,6 +104,7 @@ for bindir in ${(s.:.)PATH} "$HOME/.local/bin"; do
   (( ${candidate_bins[(Ie)$bindir]} )) || candidate_bins+=("$bindir")
 done
 for bindir in $candidate_bins; do
+  [[ $link_collision == 0 ]] || break
   [[ $bindir == "$HOME/.local/bin" ]] && mkdir -p "$bindir" 2>/dev/null
   if [[ -d $bindir && -w $bindir ]]; then
     dest="$bindir/claudes"
@@ -132,10 +140,15 @@ if [[ $linked_bin == "$HOME/.local/bin" && :$PATH: != *":$HOME/.local/bin:"* ]];
   fish_stub="$HOME/.config/fish/conf.d/claudes.fish"
   fish_path_line='fish_add_path "$HOME/.local/bin"  # claudes-path'
   if [[ -f $fish_stub ]] && ! grep -qF "$fish_path_line" "$fish_stub"; then
-    printf '%s\n' "$fish_path_line" >> "$fish_stub"
+    printf '\n%s\n' "$fish_path_line" >> "$fish_stub"
     echo "✓ ~/.local/bin added to fish PATH"
   fi
   export PATH="$HOME/.local/bin:$PATH"
+fi
+
+if [[ -n $linked_bin ]]; then
+  mkdir -p "$HOME/.claude-profiles"
+  printf '%s\n' "$linked_bin" > "$HOME/.claude-profiles/.bin-dir"
 fi
 
 # claude-as / claude-<profile> as real executables, so apps, editors and

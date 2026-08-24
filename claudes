@@ -56,13 +56,15 @@ profile_names() {
     if [ -d "$root" ]; then
       for d in "$root"/*/; do
         [ -d "$d" ] || continue
-        name=$(basename "$d")
+        name=${d%/}
+        name=${name##*/}
         if valid_profile_name "$name"; then echo "$name"; fi
       done
     fi
     for a in /Applications/Claude-*.app; do
       [ -d "$a" ] || continue
-      b=$(basename "$a" .app)
+      b=${a##*/}
+      b=${b%.app}
       name=${b#Claude-}
       if valid_profile_name "$name"; then echo "$name"; fi
     done
@@ -294,6 +296,16 @@ cmd_run() {
 
 # Keep profile shims beside this installation's `claudes` link.
 bin_dir() {
+  if [ -f "$root/.bin-dir" ]; then
+    IFS= read -r d < "$root/.bin-dir" || d=""
+    case $d in /opt/homebrew/bin|/usr/local/bin|"$HOME/.local/bin")
+      if [ -L "$d/claudes" ] && [ "$(readlink "$d/claudes")" = "$self" ] && [ -w "$d" ]; then
+        echo "$d"
+        return 0
+      fi
+      ;;
+    esac
+  fi
   old_ifs=$IFS
   IFS=:
   result=""
@@ -325,7 +337,9 @@ cmd_shims() {
     [ "$attempts" -lt 100 ] || die "timed out waiting for another shim sync"
     sleep 0.1
   done
-  trap 'rm -f "$lock_file"' 0 1 2 15
+  cleanup_shim_lock() { rm -f "$lock_file"; }
+  trap cleanup_shim_lock 0
+  trap 'exit 1' 1 2 15
 
   wanted=""
   if [ "$remove" = 0 ]; then

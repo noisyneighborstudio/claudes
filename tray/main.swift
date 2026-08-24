@@ -295,7 +295,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         // "Default" (the migrated ~/.claude) is the dedicated menu entry, not a profile.
         if let cfgs = try? fm.contentsOfDirectory(atPath: configRoot) {
-            for cfg in cfgs where cfg != "Default" && isValidProfileName(cfg) {
+            for cfg in cfgs where isValidProfileName(cfg) {
+                var isDirectory: ObjCBool = false
+                guard fm.fileExists(atPath: configRoot + "/" + cfg, isDirectory: &isDirectory),
+                      isDirectory.boolValue else { continue }
                 names.insert(cfg)
             }
         }

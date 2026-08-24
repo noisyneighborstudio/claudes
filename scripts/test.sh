@@ -28,6 +28,13 @@ ln -s /usr/bin/false "$foreign_bin/claude-work"
 ln -s "$test_root/foreign/claude-as" "$shim_bin/claude-client"
 ln -s "$PWD/shell/claude-as" "$shim_bin/claude-old"
 ln -s "$PWD/claudes" "$shim_bin/claudes"
+printf '%s\n' "$shim_bin" > "$home/.claude-profiles/.bin-dir"
+
+HOME="$home" PATH="/usr/bin:/bin" sh -c '
+  set -- help
+  . "$0" >/dev/null
+  test "$(bin_dir)" = "$HOME/.local/bin"
+' "$PWD/claudes"
 
 HOME="$home" PATH="$foreign_bin:$shim_bin:/usr/bin:/bin" sh -c '
   set -- help

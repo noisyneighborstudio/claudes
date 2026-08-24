@@ -9,6 +9,17 @@
 set -euo pipefail
 setopt null_glob
 
+shim_lock="${TMPDIR:-/tmp}/dev.sethwebster.claudes-shims-$(id -u).lock"
+attempts=0
+until /usr/bin/shlock -f "$shim_lock" -p $$; do
+  (( attempts += 1 ))
+  (( attempts < 100 )) || { echo "✗ Timed out waiting for profile command sync" >&2; exit 1; }
+  sleep 0.1
+done
+cleanup_shim_lock() { rm -f "$shim_lock" }
+trap cleanup_shim_lock EXIT
+trap 'exit 1' HUP INT TERM
+
 pkill -f ClaudeTray 2>/dev/null || true
 rm -rf /Applications/Claudes.app
 echo "✓ Removed Claudes.app"
@@ -69,6 +80,7 @@ for bindir in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
     echo "✓ Removed $link"
   done
 done
+rm -f "$HOME/.claude-profiles/.bin-dir"
 
 rm -f "$HOME/.warp/launch_configurations"/claudes-*.yaml
 defaults delete dev.sethwebster.claudes 2>/dev/null || true
