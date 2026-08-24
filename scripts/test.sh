@@ -28,13 +28,13 @@ ln -s /usr/bin/false "$foreign_bin/claude-work"
 ln -s "$test_root/foreign/claude-as" "$shim_bin/claude-client"
 ln -s "$PWD/shell/claude-as" "$shim_bin/claude-old"
 ln -s "$PWD/claudes" "$shim_bin/claudes"
-printf '%s\n' "$shim_bin" > "$home/.claude-profiles/.bin-dir"
 
 HOME="$home" PATH="/usr/bin:/bin" sh -c '
   set -- help
   . "$0" >/dev/null
   test "$(bin_dir)" = "$HOME/.local/bin"
 ' "$PWD/claudes"
+test "$(cat "$home/.claude-profiles/.bin-dir")" = "$shim_bin"
 
 HOME="$home" PATH="$foreign_bin:$shim_bin:/usr/bin:/bin" sh -c '
   set -- help
@@ -70,4 +70,16 @@ HOME="$home" PATH="$foreign_bin:$shim_bin:/usr/bin:/bin" sh -c '
 
 test "$(readlink "$shim_bin/claude-client")" = "$test_root/foreign/claude-as"
 test "$(readlink "$shim_bin/claude")" = /usr/bin/true
+
+installed_line='export PATH="$HOME/.local/bin:$PATH"  # claudes-path'
+custom_line='if true; then export PATH="$HOME/.local/bin:$PATH"  # claudes-path'
+printf '%s\n%s\n' "$installed_line" "$custom_line" > "$test_root/rc"
+grep -vxF -e "$installed_line" "$test_root/rc" > "$test_root/rc.cleaned"
+test "$(cat "$test_root/rc.cleaned")" = "$custom_line"
+
+fish_line='fish_add_path "$HOME/.local/bin"  # claudes-path'
+custom_fish='if true; fish_add_path "$HOME/.local/bin"  # claudes-path'
+printf '%s\n%s\n' "$fish_line" "$custom_fish" > "$test_root/fish"
+grep -vxF -e "$fish_line" "$test_root/fish" > "$test_root/fish.cleaned"
+test "$(cat "$test_root/fish.cleaned")" = "$custom_fish"
 echo "All tests passed"

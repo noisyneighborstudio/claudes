@@ -317,8 +317,21 @@ bin_dir() {
     fi
   done
   IFS=$old_ifs
-  [ -n "$result" ] || return 1
-  echo "$result"
+  if [ -n "$result" ]; then
+    echo "$result"
+    return 0
+  fi
+
+  # Upgrade path for releases that created the CLI link before .bin-dir existed.
+  for d in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
+    if [ -L "$d/claudes" ] && [ "$(readlink "$d/claudes")" = "$self" ] && [ -w "$d" ]; then
+      mkdir -p "$root"
+      printf '%s\n' "$d" > "$root/.bin-dir"
+      echo "$d"
+      return 0
+    fi
+  done
+  return 1
 }
 
 # claude-as + claude-<profile> as real executables on PATH (symlinks to

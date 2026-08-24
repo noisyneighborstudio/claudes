@@ -45,9 +45,9 @@ path_line='export PATH="$HOME/.local/bin:$PATH"  # claudes-path'
 fish_line='test -f "'"$res"'/claudes.fish"; and source "'"$res"'/claudes.fish"  # claudes'
 fish_path_line='fish_add_path "$HOME/.local/bin"  # claudes-path'
 for rc in "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc"; do
-  if grep -qF -e "$zsh_line" -e "$bash_line" -e "$path_line" "$rc" 2>/dev/null; then
+  if grep -qxF -e "$zsh_line" -e "$bash_line" -e "$path_line" "$rc" 2>/dev/null; then
     tmp=$(mktemp)
-    grep -vF -e "$zsh_line" -e "$bash_line" -e "$path_line" "$rc" > "$tmp" || true
+    grep -vxF -e "$zsh_line" -e "$bash_line" -e "$path_line" "$rc" > "$tmp" || true
     cat "$tmp" > "$rc"
     rm -f "$tmp"
     echo "✓ Removed shell helper line from ${rc/#$HOME/~}"
@@ -55,9 +55,9 @@ for rc in "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc"; do
 done
 
 fish_stub="$HOME/.config/fish/conf.d/claudes.fish"
-if grep -qF -e "$fish_line" -e "$fish_path_line" "$fish_stub" 2>/dev/null; then
+if grep -qxF -e "$fish_line" -e "$fish_path_line" "$fish_stub" 2>/dev/null; then
   tmp=$(mktemp)
-  grep -vF -e "$fish_line" -e "$fish_path_line" "$fish_stub" > "$tmp" || true
+  grep -vxF -e "$fish_line" -e "$fish_path_line" "$fish_stub" > "$tmp" || true
   if [[ -s $tmp ]]; then
     cat "$tmp" > "$fish_stub"
   else
