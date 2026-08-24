@@ -42,6 +42,21 @@ HOME="$home" PATH="$foreign_bin:$shim_bin:/usr/bin:/bin" sh -c '
   cmd_shims
 ' "$PWD/claudes"
 
+HOME="$home" PATH="/usr/bin:/bin" zsh -c 'source shell/claudes.zsh; command -v claudes >/dev/null; command -v claude-expo >/dev/null'
+HOME="$home" PATH="/usr/bin:/bin" bash -c 'source shell/claudes.bash; command -v claudes >/dev/null; command -v claude-expo >/dev/null'
+if command -v fish >/dev/null; then
+  fish_bin=$(command -v fish)
+  HOME="$home" PATH="/usr/bin:/bin" "$fish_bin" -c 'source shell/claudes.fish; command -q claudes; and command -q claude-expo'
+fi
+
+HOME="$home" PATH="$foreign_bin:$shim_bin:/usr/bin:/bin" TMPDIR="$test_root/one" ./claudes shims >/dev/null &
+first_sync=$!
+HOME="$home" PATH="$foreign_bin:$shim_bin:/usr/bin:/bin" TMPDIR="$test_root/two" ./claudes shims >/dev/null &
+second_sync=$!
+wait $first_sync
+wait $second_sync
+test ! -e "$home/.claude-profiles/.shims.lock"
+
 for name in claude-as claude-default claude-expo; do
   test "$(readlink "$shim_bin/$name")" = "$PWD/shell/claude-as"
 done

@@ -9,7 +9,8 @@
 set -euo pipefail
 setopt null_glob
 
-shim_lock="${TMPDIR:-/tmp}/dev.sethwebster.claudes-shims-$(id -u).lock"
+mkdir -p "$HOME/.claude-profiles"
+shim_lock="$HOME/.claude-profiles/.shims.lock"
 attempts=0
 until /usr/bin/shlock -f "$shim_lock" -p $$; do
   (( attempts += 1 ))

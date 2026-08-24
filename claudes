@@ -343,7 +343,8 @@ cmd_shims() {
   src="$scripts_dir/claude-as"
   [ -f "$src" ] || src="$scripts_dir/shell/claude-as"  # dev-tree layout
   dir=$(bin_dir) || die "claudes command link not found; run install.sh again"
-  lock_file="${TMPDIR:-/tmp}/dev.sethwebster.claudes-shims-$(id -u).lock"
+  mkdir -p "$root"
+  lock_file="$root/.shims.lock"
   attempts=0
   until /usr/bin/shlock -f "$lock_file" -p $$; do
     attempts=$((attempts + 1))
