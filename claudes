@@ -365,14 +365,17 @@ cmd_shims() {
     done; })
   fi
 
-  # Prune ours only — identified by the symlink target, never a real command.
-  for f in "$dir"/claude-*; do
-    [ -L "$f" ] || continue
-    [ "$(readlink "$f")" = "$src" ] || continue
-    if ! printf '%s\n' "$wanted" | grep -qx "$(basename "$f")"; then
-      rm -f "$f"
-      echo "✓ removed $f"
-    fi
+  # Prune exact-owned links across every supported bin directory. This also
+  # removes stale commands after the preferred PATH directory changes.
+  for prune_dir in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
+    for f in "$prune_dir"/claude-*; do
+      [ -L "$f" ] || continue
+      [ "$(readlink "$f")" = "$src" ] || continue
+      if [ "$prune_dir" != "$dir" ] || ! printf '%s\n' "$wanted" | grep -qx "$(basename "$f")"; then
+        rm -f "$f"
+        echo "✓ removed $f"
+      fi
+    done
   done
   [ "$remove" = 1 ] && return 0
 

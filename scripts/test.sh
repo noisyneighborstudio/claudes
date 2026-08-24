@@ -97,4 +97,17 @@ custom_fish='if true; fish_add_path "$HOME/.local/bin"  # claudes-path'
 printf '%s\n%s\n' "$fish_line" "$custom_fish" > "$test_root/fish"
 grep -vxF -e "$fish_line" "$test_root/fish" > "$test_root/fish.cleaned"
 test "$(cat "$test_root/fish.cleaned")" = "$custom_fish"
+
+migrate_home="$test_root/migrate-home"
+migrate_bin="$test_root/migrate-bin"
+mkdir -p "$migrate_home/.claude-profiles" "$migrate_home/.local/bin" "$migrate_bin"
+ln -s "$PWD/shell/claude-as" "$migrate_home/.local/bin/claude-stale"
+HOME="$migrate_home" PATH="/usr/bin:/bin" sh -c '
+  new_bin=$1
+  set -- help
+  . "$0" >/dev/null
+  bin_dir() { echo "$new_bin"; }
+  cmd_shims
+' "$PWD/claudes" "$migrate_bin"
+test ! -e "$migrate_home/.local/bin/claude-stale"
 echo "All tests passed"
