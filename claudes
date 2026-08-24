@@ -47,7 +47,7 @@ valid_profile_name() {
   [ -n "$1" ] || return 1
   clean=$(printf '%s' "$1" | LC_ALL=C tr -cd 'A-Za-z0-9')
   [ "$clean" = "$1" ] || return 1
-  case $(lower "$1") in as|default) return 1 ;; *) return 0 ;; esac
+  case $(lower "$1") in default) return 1 ;; *) return 0 ;; esac
 }
 
 # All profile names: config dirs ∪ app clones (one per line, sorted, unique).
@@ -294,13 +294,19 @@ cmd_run() {
 
 # Keep profile shims beside this installation's `claudes` link.
 bin_dir() {
-  for d in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
+  old_ifs=$IFS
+  IFS=:
+  result=""
+  for d in $PATH; do
+    case $d in /opt/homebrew/bin|/usr/local/bin|"$HOME/.local/bin") ;; *) continue ;; esac
     if [ -L "$d/claudes" ] && [ "$(readlink "$d/claudes")" = "$self" ] && [ -w "$d" ]; then
-      echo "$d"
-      return 0
+      result=$d
+      break
     fi
   done
-  return 1
+  IFS=$old_ifs
+  [ -n "$result" ] || return 1
+  echo "$result"
 }
 
 # claude-as + claude-<profile> as real executables on PATH (symlinks to
@@ -312,6 +318,14 @@ cmd_shims() {
   src="$scripts_dir/claude-as"
   [ -f "$src" ] || src="$scripts_dir/shell/claude-as"  # dev-tree layout
   dir=$(bin_dir) || die "claudes command link not found; run install.sh again"
+  lock_file="${TMPDIR:-/tmp}/dev.sethwebster.claudes-shims-$(id -u).lock"
+  attempts=0
+  until /usr/bin/shlock -f "$lock_file" -p $$; do
+    attempts=$((attempts + 1))
+    [ "$attempts" -lt 100 ] || die "timed out waiting for another shim sync"
+    sleep 0.1
+  done
+  trap 'rm -f "$lock_file"' 0 1 2 15
 
   wanted=""
   if [ "$remove" = 0 ]; then

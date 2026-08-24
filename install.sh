@@ -76,14 +76,18 @@ done
 
 if [[ -d $HOME/.config/fish ]]; then
   mkdir -p "$HOME/.config/fish/conf.d"
-  printf 'test -f "%s/claudes.fish"; and source "%s/claudes.fish"  # claudes\n' "$res" "$res" \
-    > "$HOME/.config/fish/conf.d/claudes.fish"
+  fish_stub="$HOME/.config/fish/conf.d/claudes.fish"
+  fish_line='test -f "'"$res"'/claudes.fish"; and source "'"$res"'/claudes.fish"  # claudes'
+  if ! grep -qF "$fish_line" "$fish_stub" 2>/dev/null; then
+    printf '%s\n' "$fish_line" >> "$fish_stub"
+  fi
   echo "✓ Shell helper added to ~/.config/fish/conf.d/claudes.fish"
 fi
 
 # `claudes` CLI on PATH for every shell (bash/fish/scripts), not just zsh.
 cli_src="/Applications/Claudes.app/Contents/Resources/claudes"
 linked_bin=""
+link_collision=0
 candidate_bins=()
 for bindir in ${(s.:.)PATH} "$HOME/.local/bin"; do
   case "$bindir" in
@@ -98,7 +102,8 @@ for bindir in $candidate_bins; do
     dest="$bindir/claudes"
     if [[ -e $dest || -L $dest ]] && [[ ! -L $dest || $(readlink "$dest") != "$cli_src" ]]; then
       echo "✗ $dest exists and isn't owned by Claudes; leaving it unchanged." >&2
-      continue
+      link_collision=1
+      break
     fi
     ln -sf "$cli_src" "$bindir/claudes"
     linked_bin="$bindir"
@@ -108,7 +113,11 @@ for bindir in $candidate_bins; do
 done
 
 if [[ -z $linked_bin ]]; then
-  echo "✗ Couldn't link the claudes CLI without replacing another command." >&2
+  if [[ $link_collision == 1 ]]; then
+    echo "✗ Resolve the active claudes command collision, then run install.sh again." >&2
+  else
+    echo "✗ Couldn't find a writable PATH directory for the claudes CLI." >&2
+  fi
 fi
 
 if [[ $linked_bin == "$HOME/.local/bin" && :$PATH: != *":$HOME/.local/bin:"* ]]; then
@@ -121,8 +130,9 @@ if [[ $linked_bin == "$HOME/.local/bin" && :$PATH: != *":$HOME/.local/bin:"* ]];
     echo "✓ ~/.local/bin added to ${rc/#$HOME/~}"
   done
   fish_stub="$HOME/.config/fish/conf.d/claudes.fish"
-  if [[ -f $fish_stub ]] && ! grep -qF '# claudes-path' "$fish_stub"; then
-    printf 'fish_add_path "$HOME/.local/bin"  # claudes-path\n' >> "$fish_stub"
+  fish_path_line='fish_add_path "$HOME/.local/bin"  # claudes-path'
+  if [[ -f $fish_stub ]] && ! grep -qF "$fish_path_line" "$fish_stub"; then
+    printf '%s\n' "$fish_path_line" >> "$fish_stub"
     echo "✓ ~/.local/bin added to fish PATH"
   fi
   export PATH="$HOME/.local/bin:$PATH"
@@ -130,7 +140,9 @@ fi
 
 # claude-as / claude-<profile> as real executables, so apps, editors and
 # scripts that never source a shell rc can pin a profile too.
-"$cli_src" shims || echo "✗ Couldn't create profile commands — run 'claudes shims' once a PATH dir is writable." >&2
+if [[ -n $linked_bin ]]; then
+  "$cli_src" shims || echo "✗ Couldn't create profile commands — run 'claudes shims' once a PATH dir is writable." >&2
+fi
 
 echo ""
 echo "✓ Installed $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/Claudes.app/Contents/Info.plist 2>/dev/null | sed 's/^/v/'). Look for the Claudes icon in the menu bar."

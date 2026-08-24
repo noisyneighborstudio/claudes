@@ -31,6 +31,8 @@ res="/Applications/Claudes.app/Contents/Resources"
 zsh_line='[[ -f "'"$res"'/claudes.zsh" ]] && source "'"$res"'/claudes.zsh"  # claudes'
 bash_line='[ -f "'"$res"'/claudes.bash" ] && . "'"$res"'/claudes.bash"  # claudes'
 path_line='export PATH="$HOME/.local/bin:$PATH"  # claudes-path'
+fish_line='test -f "'"$res"'/claudes.fish"; and source "'"$res"'/claudes.fish"  # claudes'
+fish_path_line='fish_add_path "$HOME/.local/bin"  # claudes-path'
 for rc in "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc"; do
   if grep -qF -e "$zsh_line" -e "$bash_line" -e "$path_line" "$rc" 2>/dev/null; then
     tmp=$(mktemp)
@@ -41,9 +43,17 @@ for rc in "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc"; do
   fi
 done
 
-if [[ -f $HOME/.config/fish/conf.d/claudes.fish ]]; then
-  rm "$HOME/.config/fish/conf.d/claudes.fish"
-  echo "✓ Removed fish helper stub"
+fish_stub="$HOME/.config/fish/conf.d/claudes.fish"
+if grep -qF -e "$fish_line" -e "$fish_path_line" "$fish_stub" 2>/dev/null; then
+  tmp=$(mktemp)
+  grep -vF -e "$fish_line" -e "$fish_path_line" "$fish_stub" > "$tmp" || true
+  if [[ -s $tmp ]]; then
+    cat "$tmp" > "$fish_stub"
+  else
+    rm "$fish_stub"
+  fi
+  rm -f "$tmp"
+  echo "✓ Removed fish helper lines"
 fi
 
 # PATH symlinks — the CLI plus the claude-as / claude-<profile> shims, only

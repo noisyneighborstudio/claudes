@@ -230,7 +230,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 inItem.submenu = inMenu
                 sub.addItem(inItem)
             }
-            sub.addItem(actionItem("Copy Command:  claude-\(profile.name.lowercased())", #selector(copyCommand(_:)), profile.name))
+            sub.addItem(actionItem("Copy Command:  \(profileCommand(profile.name))", #selector(copyCommand(_:)), profile.name))
             sub.addItem(actionItem("Reveal Data Dir", #selector(revealData(_:)), profile.name))
             sub.addItem(actionItem("Transfer Session…", #selector(transferProfileSession(_:)), profile.name))
             sub.addItem(.separator())
@@ -276,7 +276,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Profile discovery
 
     private func isValidProfileName(_ name: String) -> Bool {
-        let reserved = ["as", "default"]
+        let reserved = ["default"]
         return !reserved.contains(name.lowercased())
             && name.range(of: #"^[A-Za-z0-9]+$"#, options: .regularExpression) != nil
     }
@@ -690,7 +690,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let name = sender.representedObject as? String else { return }
         let pb = NSPasteboard.general
         pb.clearContents()
-        pb.setString("claude-\(name.lowercased())", forType: .string)
+        pb.setString(profileCommand(name), forType: .string)
+    }
+
+    private func profileCommand(_ name: String) -> String {
+        name.lowercased() == "as" ? "claude-as \(name)" : "claude-\(name.lowercased())"
     }
 
     private func launchSession(_ cmd: String, slug: String, in term: TerminalSpec) {
