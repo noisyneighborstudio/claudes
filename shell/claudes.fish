@@ -5,7 +5,7 @@
 # script gets them — not just shells that sourced this file.
 
 complete -c claudes -f -n __fish_use_subcommand \
-    -a 'list active use run new delete repatch sessions transfer desktop shims version help'
+    -a 'list active use run best new delete repatch sessions transfer desktop shims version help'
 complete -c claudes -f -n 'not __fish_use_subcommand' \
-    -a '(command ls $HOME/.claude-profiles 2>/dev/null)'
-complete -c claude-as -f -a '(command ls $HOME/.claude-profiles 2>/dev/null)'
+    -a '(claudes profiles 2>/dev/null) --next --best'
+complete -c claude-as -f -a '(claudes profiles 2>/dev/null) --next --best'

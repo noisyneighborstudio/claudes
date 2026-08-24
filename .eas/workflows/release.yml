@@ -31,6 +31,8 @@ jobs:
           else
             echo "No signing cert configured — artifact will be ad-hoc signed."
           fi
+      - name: Verify
+        run: ./scripts/test.sh
       - name: Semantic release
         run: |
           npm install --no-package-lock

@@ -276,7 +276,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Profile discovery
 
     private func isValidProfileName(_ name: String) -> Bool {
-        name.range(of: #"^[A-Za-z0-9]+$"#, options: .regularExpression) != nil
+        let reserved = ["as", "default"]
+        return !reserved.contains(name.lowercased())
+            && name.range(of: #"^[A-Za-z0-9]+$"#, options: .regularExpression) != nil
     }
 
     private func discoverProfiles() -> [Profile] {

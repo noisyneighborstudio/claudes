@@ -6,12 +6,12 @@
 
 _claudes_complete() {
   local words="list active use run best new delete repatch sessions transfer desktop shims version help"
-  [ "$COMP_CWORD" -gt 1 ] && words=$(ls "$HOME/.claude-profiles" 2>/dev/null)
+  [ "$COMP_CWORD" -gt 1 ] && words="$(claudes profiles 2>/dev/null) --next --best"
   COMPREPLY=($(compgen -W "$words" -- "${COMP_WORDS[COMP_CWORD]}"))
 }
 complete -F _claudes_complete claudes
 
 _claude_as_complete() {
-  COMPREPLY=($(compgen -W "$(ls "$HOME/.claude-profiles" 2>/dev/null)" -- "${COMP_WORDS[COMP_CWORD]}"))
+  COMPREPLY=($(compgen -W "$(claudes profiles 2>/dev/null) --next --best" -- "${COMP_WORDS[COMP_CWORD]}"))
 }
 complete -F _claude_as_complete claude-as

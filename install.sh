@@ -84,13 +84,21 @@ fi
 # `claudes` CLI on PATH for every shell (bash/fish/scripts), not just zsh.
 cli_src="/Applications/Claudes.app/Contents/Resources/claudes"
 linked_bin=""
-for bindir in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
+candidate_bins=()
+for bindir in ${(s.:.)PATH} "$HOME/.local/bin"; do
+  case "$bindir" in
+    /opt/homebrew/bin|/usr/local/bin|"$HOME/.local/bin") ;;
+    *) continue ;;
+  esac
+  (( ${candidate_bins[(Ie)$bindir]} )) || candidate_bins+=("$bindir")
+done
+for bindir in $candidate_bins; do
   [[ $bindir == "$HOME/.local/bin" ]] && mkdir -p "$bindir" 2>/dev/null
   if [[ -d $bindir && -w $bindir ]]; then
     dest="$bindir/claudes"
     if [[ -e $dest || -L $dest ]] && [[ ! -L $dest || $(readlink "$dest") != "$cli_src" ]]; then
       echo "✗ $dest exists and isn't owned by Claudes; leaving it unchanged." >&2
-      break
+      continue
     fi
     ln -sf "$cli_src" "$bindir/claudes"
     linked_bin="$bindir"
@@ -98,6 +106,10 @@ for bindir in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
     break
   fi
 done
+
+if [[ -z $linked_bin ]]; then
+  echo "✗ Couldn't link the claudes CLI without replacing another command." >&2
+fi
 
 if [[ $linked_bin == "$HOME/.local/bin" && :$PATH: != *":$HOME/.local/bin:"* ]]; then
   path_line='export PATH="$HOME/.local/bin:$PATH"  # claudes-path'

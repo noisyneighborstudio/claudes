@@ -6,7 +6,7 @@
 
 _claudes_profiles() {
   local -a profiles
-  profiles=(${(f)"$(ls "$HOME/.claude-profiles" 2>/dev/null)"})
+  profiles=(--next --best ${(f)"$(claudes profiles 2>/dev/null)"})
   _describe 'profile' profiles
 }
 

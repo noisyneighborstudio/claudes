@@ -24,12 +24,17 @@ if [[ -L $HOME/.claude ]]; then
   fi
 fi
 
-# Filter helper lines out via a temp file + `cat >` — writes through rc files
-# that are symlinks into a dotfiles repo, which BSD `sed -i` refuses to edit.
+# Filter the exact installed helper lines via a temp file + `cat >`. This writes
+# through rc files that are symlinks into a dotfiles repo, which BSD `sed -i`
+# refuses to edit.
+res="/Applications/Claudes.app/Contents/Resources"
+zsh_line='[[ -f "'"$res"'/claudes.zsh" ]] && source "'"$res"'/claudes.zsh"  # claudes'
+bash_line='[ -f "'"$res"'/claudes.bash" ] && . "'"$res"'/claudes.bash"  # claudes'
+path_line='export PATH="$HOME/.local/bin:$PATH"  # claudes-path'
 for rc in "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.bashrc"; do
-  if grep -qE '# claudes(-path)?$' "$rc" 2>/dev/null; then
+  if grep -qF -e "$zsh_line" -e "$bash_line" -e "$path_line" "$rc" 2>/dev/null; then
     tmp=$(mktemp)
-    grep -vE '# claudes(-path)?$' "$rc" > "$tmp" || true
+    grep -vF -e "$zsh_line" -e "$bash_line" -e "$path_line" "$rc" > "$tmp" || true
     cat "$tmp" > "$rc"
     rm -f "$tmp"
     echo "✓ Removed shell helper line from ${rc/#$HOME/~}"
