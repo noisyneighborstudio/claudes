@@ -183,6 +183,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             sub.addItem(actionItem("Open Desktop App", #selector(openDefaultDesktop(_:)), nil))
             sub.addItem(actionItem("Open Claude Code (\(preferredTerminal.name))", #selector(openDefaultTerminal(_:)), nil))
+
+            let sessionsItem = NSMenuItem(title: "Sessions", action: nil, keyEquivalent: "")
+            let sessionsMenu = NSMenu()
             let dTerms = installedTerminals()
             if dTerms.count > 1 {
                 let inItem = NSMenuItem(title: "Open Claude Code In", action: nil, keyEquivalent: "")
@@ -191,11 +194,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     inMenu.addItem(actionItem(t.name, #selector(openDefaultTerminalIn(_:)), t.bundleId))
                 }
                 inItem.submenu = inMenu
-                sub.addItem(inItem)
+                sessionsMenu.addItem(inItem)
             }
-            sub.addItem(actionItem("Copy Command:  claude", #selector(copyDefaultCommand(_:)), nil))
-            sub.addItem(actionItem("Reveal Data Dir", #selector(revealDefaultData(_:)), nil))
-            sub.addItem(actionItem("Transfer Session…", #selector(transferDefaultSession(_:)), nil))
+            sessionsMenu.addItem(actionItem("Transfer Session…", #selector(transferDefaultSession(_:)), nil))
+            sessionsMenu.addItem(.separator())
+            sessionsMenu.addItem(actionItem("Copy Command:  claude", #selector(copyDefaultCommand(_:)), nil))
+            sessionsItem.submenu = sessionsMenu
+            sub.addItem(sessionsItem)
+
+            let manageItem = NSMenuItem(title: "Manage Profile", action: nil, keyEquivalent: "")
+            let manageMenu = NSMenu()
+            manageMenu.addItem(actionItem("Reveal Data Dir", #selector(revealDefaultData(_:)), nil))
+            manageItem.submenu = manageMenu
+            sub.addItem(manageItem)
             item.submenu = sub
             menu.addItem(item)
         }
@@ -220,6 +231,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 sub.addItem(actionItem("Open Desktop App", #selector(openDesktop(_:)), profile.name))
             }
             sub.addItem(actionItem("Open Claude Code (\(preferredTerminal.name))", #selector(openTerminal(_:)), profile.name))
+
+            let sessionsItem = NSMenuItem(title: "Sessions", action: nil, keyEquivalent: "")
+            let sessionsMenu = NSMenu()
             let terms = installedTerminals()
             if terms.count > 1 {
                 let inItem = NSMenuItem(title: "Open Claude Code In", action: nil, keyEquivalent: "")
@@ -228,25 +242,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     inMenu.addItem(actionItem(t.name, #selector(openTerminalIn(_:)), profile.name + "|" + t.bundleId))
                 }
                 inItem.submenu = inMenu
-                sub.addItem(inItem)
+                sessionsMenu.addItem(inItem)
             }
-            sub.addItem(actionItem("Copy Command:  \(profileCommand(profile.name))", #selector(copyCommand(_:)), profile.name))
-            sub.addItem(actionItem("Reveal Data Dir", #selector(revealData(_:)), profile.name))
-            sub.addItem(actionItem("Transfer Session…", #selector(transferProfileSession(_:)), profile.name))
-            sub.addItem(.separator())
-            sub.addItem(actionItem("Delete Profile…", #selector(deleteProfile(_:)), profile.name))
+            sessionsMenu.addItem(actionItem("Transfer Session…", #selector(transferProfileSession(_:)), profile.name))
+            sessionsMenu.addItem(.separator())
+            sessionsMenu.addItem(actionItem("Copy Command:  \(profileCommand(profile.name))", #selector(copyCommand(_:)), profile.name))
+            sessionsItem.submenu = sessionsMenu
+            sub.addItem(sessionsItem)
+
+            let manageItem = NSMenuItem(title: "Manage Profile", action: nil, keyEquivalent: "")
+            let manageMenu = NSMenu()
+            manageMenu.addItem(actionItem("Reveal Data Dir", #selector(revealData(_:)), profile.name))
+            manageMenu.addItem(.separator())
+            manageMenu.addItem(actionItem("Delete Profile…", #selector(deleteProfile(_:)), profile.name))
+            manageItem.submenu = manageMenu
+            sub.addItem(manageItem)
             item.submenu = sub
             menu.addItem(item)
         }
 
         menu.addItem(.separator())
+        let manageClaudesItem = NSMenuItem(title: "Manage Claudes", action: nil, keyEquivalent: "")
+        let manageClaudesMenu = NSMenu()
         if claudeInstalled {
-            menu.addItem(actionItem("New Profile…", #selector(newProfile(_:)), nil))
-            menu.addItem(actionItem("Re-patch All (after Claude update)", #selector(repatchAll(_:)), nil))
+            manageClaudesMenu.addItem(actionItem("New Profile…", #selector(newProfile(_:)), nil))
+            manageClaudesMenu.addItem(.separator())
+            manageClaudesMenu.addItem(actionItem("Re-patch All (after Claude update)", #selector(repatchAll(_:)), nil))
         }
         let toggle = actionItem("Auto-repatch after Claude updates", #selector(toggleAutoRepatch(_:)), nil)
         toggle.state = autoRepatchEnabled ? .on : .off
-        menu.addItem(toggle)
+        manageClaudesMenu.addItem(toggle)
+        manageClaudesItem.submenu = manageClaudesMenu
+        menu.addItem(manageClaudesItem)
         let allTerms = installedTerminals()
         if allTerms.count > 1 {
             let termItem = NSMenuItem(title: "Open Sessions In", action: nil, keyEquivalent: "")
@@ -727,7 +754,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     } else {
                         // A second app instance can open behind the existing one —
                         // bring the new window forward explicitly.
-                        runningApp?.activate(options: [.activateIgnoringOtherApps])
+                        runningApp?.activate(options: [])
                     }
                 }
             }
