@@ -2,19 +2,25 @@
 set -euo pipefail
 cd "${0:A:h}/.."
 
+# Keep compiler and fixture scratch data inside the checkout. Some CI sandboxes
+# expose the system temp directory as read-only.
+test_root=$(mktemp -d "$PWD/.claudes-test.XXXXXX")
+trap 'rm -rf "$test_root"' EXIT
+mkdir -p "$test_root/tmp" "$test_root/module-cache"
+
 sh -n claudes shell/claude-as
 zsh -n install.sh uninstall.sh make-claude-profile.sh tray/build.sh scripts/release-build.sh shell/claudes.zsh
 bash -n shell/claudes.bash
 command -v fish >/dev/null && fish -n shell/claudes.fish
-swiftc -typecheck tray/main.swift
+TMPDIR="$test_root/tmp" CLANG_MODULE_CACHE_PATH="$test_root/module-cache" \
+  SWIFT_MODULECACHE_PATH="$test_root/module-cache" swiftc -typecheck tray/main.swift
+./scripts/test-menu.sh
 
 if ./make-claude-profile.sh As >/dev/null 2>&1; then
   echo "Reserved profile name was accepted" >&2
   exit 1
 fi
 
-test_root=$(mktemp -d)
-trap 'rm -rf "$test_root"' EXIT
 home="$test_root/home"
 shim_bin="$home/.local/bin"
 foreign_bin="$test_root/foreign-bin"

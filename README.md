@@ -28,7 +28,7 @@
 <br>
 
 <p align="center">
-  <img src="docs/menu-v4.png" alt="Claudes menu: profiles with running and active indicators, per-profile actions — Set as Active, desktop app, terminal session, Transfer Session, delete" width="560">
+  <img src="docs/menu-v5-profile.png" alt="Claudes menu: profile status with frequent actions and compact Sessions and Manage Profile submenus" width="760">
 </p>
 
 <br>
@@ -152,11 +152,20 @@ Everything the tray does is also a command — the tray shells out to the same s
 
 ## The menu bar app
 
-- **Profiles at a glance** — 🟢 running, ✓ active
-- **Per profile** — Set as Active, open the desktop app, open a Claude Code terminal session (Terminal, iTerm2, Warp, Ghostty, kitty, Alacritty, WezTerm), **Transfer Session…**, reveal data dir, delete
-- **New Profile…** — clones and patches `Claude.app`, with progress in Terminal
-- **Auto-repatch** — detects Claude Desktop updates (version drift between the original and each clone) and silently rebuilds idle clones in the background; running ones are picked up after they quit. ⬆️ while an update is pending, ⏳ while rebuilding. Prefer manual? Toggle it off and use **Re-patch All**
+- **Profiles at a glance** — 🟢 running, ✓ active, ⬆️ update pending, ⏳ rebuilding
+- **Frequent actions first** — each profile starts with Set as Active, Open Desktop App, and Open Claude Code (Terminal, iTerm2, Warp, Ghostty, kitty, Alacritty, or WezTerm)
+- **Sessions** — choose another installed terminal, **Transfer Session…**, or copy the profile command
+- **Manage Profile** — reveal the data directory or delete the profile; deletion remains separated and asks for confirmation
+- **Manage Claudes** — create a profile, manually **Re-patch All**, or toggle **Auto-repatch after Claude updates**. Auto-repatch silently rebuilds idle clones after version drift; running clones wait until they quit
 - **Self-update** — one click when a new Claudes release ships
+
+<p align="center">
+  <img src="docs/menu-v5-sessions.png" alt="Claudes Sessions submenu with terminal choice, transfer, and copy command actions" width="980">
+</p>
+
+<p align="center">
+  <img src="docs/menu-v5-manage.png" alt="Claudes management submenus: app-wide profile and repatch controls, plus profile reveal and separated delete actions" width="980">
+</p>
 
 <br>
 
