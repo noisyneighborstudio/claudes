@@ -754,7 +754,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     } else {
                         // A second app instance can open behind the existing one —
                         // bring the new window forward explicitly.
-                        runningApp?.activate(options: [])
+                        runningApp?.activate(options: .activateIgnoringOtherApps)
                     }
                 }
             }

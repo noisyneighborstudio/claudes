@@ -53,6 +53,9 @@ require_text '#selector(repatchAll(_:))'
 require_text '#selector(toggleAutoRepatch(_:))'
 require_text '#selector(selfUpdate(_:))'
 
+# Opening a new desktop instance must explicitly bring it to the foreground.
+require_text 'runningApp?.activate(options: .activateIgnoringOtherApps)'
+
 # Deletion is last in Manage Profile and still has running/repatch/confirmation guards.
 require_order '#selector(revealData(_:))' 'manageMenu.addItem(.separator())'
 require_order 'manageMenu.addItem(.separator())' '#selector(deleteProfile(_:))'
