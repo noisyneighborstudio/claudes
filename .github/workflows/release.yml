@@ -1,0 +1,112 @@
+name: Build and publish updates
+
+on:
+  push:
+    branches: [main, release]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sparkle-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select isolated channel and version
+        id: release
+        shell: zsh
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF" in
+            refs/heads/main) channel=continuous; version="0.0.${GITHUB_RUN_NUMBER}-continuous.${GITHUB_SHA[1,7]}" ;;
+            refs/heads/release) channel=stable; version="1.0.${GITHUB_RUN_NUMBER}" ;;
+            *) exit 64 ;;
+          esac
+          build="${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+          tag="${channel}-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          artifact="Claudes-${channel}-${GITHUB_SHA[1,12]}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.zip"
+          print "channel=$channel\nversion=$version\nbuild=$build\ntag=$tag\nartifact=$artifact" >> "$GITHUB_OUTPUT"
+      - name: Import Developer ID certificate
+        env:
+          CERTIFICATE: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.BUILD_KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$CERTIFICATE"; test -n "$CERTIFICATE_PASSWORD"; test -n "$KEYCHAIN_PASSWORD"
+          cert="$RUNNER_TEMP/developer-id.p12"; keychain="$RUNNER_TEMP/claudes.keychain-db"
+          umask 077; printf '%s' "$CERTIFICATE" | base64 -D > "$cert"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security import "$cert" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain"
+      - name: Build, sign, and notarize
+        env:
+          CLAUDES_SIGN_IDENTITY: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+          CLAUDES_SPARKLE_PUBLIC_KEY: ${{ secrets.SPARKLE_PUBLIC_KEY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_KEY_ISSUER: ${{ secrets.NOTARY_KEY_ISSUER }}
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          test -n "$NOTARY_KEY"; test -n "$NOTARY_KEY_ID"; test -n "$NOTARY_KEY_ISSUER"
+          test -n "$CLAUDES_SIGN_IDENTITY"; test -n "$CLAUDES_SPARKLE_PUBLIC_KEY"
+          notary="$RUNNER_TEMP/notary.p8"; umask 077; printf '%s' "$NOTARY_KEY" > "$notary"
+          NOTARY_KEY_FILE="$notary" ./scripts/release-build.sh '${{ steps.release.outputs.version }}' '${{ steps.release.outputs.build }}'
+          mv Claudes.zip '${{ steps.release.outputs.artifact }}'
+          codesign --verify --deep --strict --verbose=2 tray/build/Claudes.app
+          xcrun stapler validate tray/build/Claudes.app
+      - name: Sign update archive
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$SPARKLE_PRIVATE_KEY"
+          key="$RUNNER_TEMP/sparkle-private-key"; umask 077; printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key"
+          result=$(.build/artifacts/sparkle/Sparkle/bin/sign_update -f "$key" '${{ steps.release.outputs.artifact }}')
+          signature=${result#*sparkle:edSignature=\"}; signature=${signature%%\"*}
+          test -n "$signature"; print "signature=$signature" >> "$GITHUB_OUTPUT"
+        id: sparkle
+      - name: Publish channel artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          prerelease=(); [[ '${{ steps.release.outputs.channel }}' == continuous ]] && prerelease=(--prerelease)
+          gh release create '${{ steps.release.outputs.tag }}' '${{ steps.release.outputs.artifact }}' \
+            --title '${{ steps.release.outputs.channel }} ${{ steps.release.outputs.version }}' --target "$GITHUB_SHA" "${prerelease[@]}"
+      - name: Publish only the selected appcast
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          publication="$RUNNER_TEMP/appcasts"
+          if git ls-remote --exit-code --heads origin appcasts >/dev/null; then
+            git worktree add "$publication" origin/appcasts
+          else
+            git worktree add --detach "$publication" HEAD
+            git -C "$publication" checkout --orphan appcasts
+            git -C "$publication" rm -rf .
+          fi
+          channel='${{ steps.release.outputs.channel }}'
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${{ steps.release.outputs.tag }}/${{ steps.release.outputs.artifact }}"
+          ./scripts/make-appcast.sh "$channel" '${{ steps.release.outputs.version }}' '${{ steps.release.outputs.build }}' \
+            "$url" '${{ steps.release.outputs.artifact }}' '${{ steps.sparkle.outputs.signature }}' "$publication/$channel/appcast.xml"
+          git -C "$publication" add -- "$channel/appcast.xml"
+          git -C "$publication" config user.name github-actions
+          git -C "$publication" config user.email github-actions@github.com
+          git -C "$publication" commit -m "Publish $channel ${{ steps.release.outputs.version }}"
+          git -C "$publication" push origin HEAD:appcasts
+      - name: Remove temporary credentials
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/sparkle-private-key"
+          security delete-keychain "$RUNNER_TEMP/claudes.keychain-db" 2>/dev/null || true

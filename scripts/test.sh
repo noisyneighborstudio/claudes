@@ -2,19 +2,52 @@
 set -euo pipefail
 cd "${0:A:h}/.."
 
+test_root="$PWD/.test-tmp"
+rm -rf "$test_root"
+mkdir -p "$test_root/tmp" "$test_root/cache/clang" "$test_root/cache/swift"
+trap 'rm -rf "$test_root"' EXIT
+export TMPDIR="$test_root/tmp"
+export CLANG_MODULE_CACHE_PATH="$test_root/cache/clang"
+export SWIFT_MODULECACHE_PATH="$test_root/cache/swift"
+
 sh -n claudes shell/claude-as
-zsh -n install.sh uninstall.sh make-claude-profile.sh tray/build.sh scripts/release-build.sh shell/claudes.zsh
+zsh -n install.sh uninstall.sh make-claude-profile.sh tray/build.sh scripts/release-build.sh scripts/make-appcast.sh shell/claudes.zsh
 bash -n shell/claudes.bash
 command -v fish >/dev/null && fish -n shell/claudes.fish
-swiftc -typecheck tray/main.swift
+swiftc -typecheck tray/main.swift tray/UpdateChannel.swift
+channel_test=$(mktemp -d "$TMPDIR/channel.XXXXXX")/update-channel-tests
+swiftc tray/UpdateChannel.swift tests/UpdateChannelTests.swift -o "$channel_test"
+"$channel_test"
+
+appcast_test=$(mktemp -d "$TMPDIR/appcast.XXXXXX")
+printf artifact > "$appcast_test/Claudes-continuous-deadbeef.zip"
+signature=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
+./scripts/make-appcast.sh continuous 0.0.1-continuous.deadbeef 1001 \
+  https://github.com/noisyneighborstudio/claudes/releases/download/continuous-deadbeef/Claudes-continuous-deadbeef.zip \
+  "$appcast_test/Claudes-continuous-deadbeef.zip" "$signature" "$appcast_test/appcast.xml"
+grep -q 'sparkle:channel>continuous<' "$appcast_test/appcast.xml"
+grep -q 'sparkle:edSignature=' "$appcast_test/appcast.xml"
+if ./scripts/make-appcast.sh stable 1.0 1 https://example.invalid/Claudes-continuous-deadbeef.zip \
+  "$appcast_test/Claudes-continuous-deadbeef.zip" "$signature" "$appcast_test/bad.xml" 2>/dev/null; then
+  echo "Wrong-channel appcast was accepted" >&2
+  exit 1
+fi
+
+# Keep branch routing and publication targets explicit and isolated.
+grep -Fq 'branches: [main, release]' .github/workflows/release.yml
+grep -Fq 'refs/heads/main) channel=continuous' .github/workflows/release.yml
+grep -Fq 'refs/heads/release) channel=stable' .github/workflows/release.yml
+grep -Fq 'push origin HEAD:appcasts' .github/workflows/release.yml
+grep -Fq 'allowedChannels' tray/main.swift
+grep -Fq 'didAbortWithError' tray/main.swift
+grep -Fq 'UpdateChannel.preferenceKey' tray/main.swift
+grep -Fq 'defaults to Stable' docs/releases.md
 
 if ./make-claude-profile.sh As >/dev/null 2>&1; then
   echo "Reserved profile name was accepted" >&2
   exit 1
 fi
 
-test_root=$(mktemp -d)
-trap 'rm -rf "$test_root"' EXIT
 home="$test_root/home"
 shim_bin="$home/.local/bin"
 foreign_bin="$test_root/foreign-bin"

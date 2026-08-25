@@ -1,0 +1,9 @@
+# Release and update pipeline
+
+Claudes uses Sparkle 2 for signed automatic and manual updates. Every push to `main` publishes a uniquely named **continuous** prerelease; every push to `release` publishes a uniquely named **stable** release. Each run writes only `continuous/appcast.xml` or `stable/appcast.xml` on the `appcasts` branch, and the serialized workflow prevents cross-channel publication races.
+
+Configure these GitHub Actions secrets (never commit their values): `DEVELOPER_ID_CERTIFICATE_BASE64`, `DEVELOPER_ID_CERTIFICATE_PASSWORD`, `BUILD_KEYCHAIN_PASSWORD`, `DEVELOPER_ID_APPLICATION`, `NOTARY_KEY_ID`, `NOTARY_KEY_ISSUER`, `NOTARY_KEY_P8`, `SPARKLE_PUBLIC_KEY`, and `SPARKLE_PRIVATE_KEY`. The workflow keeps key material in runner-temporary files, removes it in an `always()` step, Developer ID signs the app, submits it to Apple notarization, staples it, and signs the final archive with Sparkle EdDSA before publication.
+
+The app defaults to Stable when no preference exists. **Update Channel** in the menu persists Stable or Continuous in `UserDefaults`; Sparkle uses that same selection for scheduled and user-initiated checks. Each appcast item carries a matching `sparkle:channel`, and the updater delegate allows only that channel. Sparkle rejects malformed feeds, incompatible channels, and archives without a valid signature; errors are reported without changing feeds or replacing the installed app.
+
+Local release builds use `CLAUDES_SPARKLE_PUBLIC_KEY`, optional `CLAUDES_SIGN_IDENTITY`, and notarization variables pointing at an existing `NOTARY_KEY_FILE`. `scripts/release-build.sh <version> <numeric-build>` creates `Claudes.zip`; `scripts/make-appcast.sh` validates channel-specific artifact URLs and emits the feed entry. Private keys must never be passed as command arguments or stored in the checkout.

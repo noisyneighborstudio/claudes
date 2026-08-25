@@ -18,6 +18,12 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>ClaudesStableFeedURL</key>
+	<string>https://raw.githubusercontent.com/noisyneighborstudio/claudes/appcasts/stable/appcast.xml</string>
+	<key>ClaudesContinuousFeedURL</key>
+	<string>https://raw.githubusercontent.com/noisyneighborstudio/claudes/appcasts/continuous/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>CLAUDES_SPARKLE_PUBLIC_KEY</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>LSUIElement</key>
