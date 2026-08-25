@@ -156,7 +156,9 @@ Everything the tray does is also a command — the tray shells out to the same s
 - **Per profile** — Set as Active, open the desktop app, open a Claude Code terminal session (Terminal, iTerm2, Warp, Ghostty, kitty, Alacritty, WezTerm), **Transfer Session…**, reveal data dir, delete
 - **New Profile…** — clones and patches `Claude.app`, with progress in Terminal
 - **Auto-repatch** — detects Claude Desktop updates (version drift between the original and each clone) and silently rebuilds idle clones in the background; running ones are picked up after they quit. ⬆️ while an update is pending, ⏳ while rebuilding. Prefer manual? Toggle it off and use **Re-patch All**
-- **Self-update** — one click when a new Claudes release ships
+- **Automatic updates** — signed Sparkle updates on the Stable channel by default; choose Stable or Continuous from **Update Channel**, and use **Check for Claudes Updates…** at any time
+
+Release maintainers should see [docs/releases.md](docs/releases.md) for branch mapping, required configuration, signing, notarization, and appcast publication.
 
 <br>
 

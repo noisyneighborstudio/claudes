@@ -1,4 +1,10 @@
 import AppKit
+#if canImport(Sparkle)
+import Sparkle
+typealias UpdaterDelegateProtocol = SPUUpdaterDelegate
+#else
+protocol UpdaterDelegateProtocol {}
+#endif
 
 // Claudes — menu bar launcher for Claude profiles (desktop instances + Claude Code CLI).
 // Profiles are discovered from /Applications/Claude-*.app and ~/.claude-profiles/.
@@ -7,7 +13,7 @@ import AppKit
 // Resident duties beyond the menu:
 //  - Auto-repatch: detects Claude.app updates (version drift vs clones) and
 //    silently rebuilds idle clones in the background.
-//  - Self-update: checks GitHub releases and offers a one-click update.
+//  - Self-update: delegates signed automatic and manual updates to Sparkle.
 
 struct Profile {
     let name: String
@@ -73,22 +79,22 @@ let terminalSpecs: [TerminalSpec] = [
     }),
 ]
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UpdaterDelegateProtocol {
     private var statusItem: NSStatusItem!
     private let fm = FileManager.default
     private let home = NSHomeDirectory()
     private var configRoot: String { home + "/.claude-profiles" }
     private let claudeAppPath = "/Applications/Claude.app"
-    private let repoAPI = "https://api.github.com/repos/noisyneighborstudio/claudes/releases/latest"
     private let newIssueURL = "https://github.com/noisyneighborstudio/claudes/issues/new"
 
     private var repatchInFlight = Set<String>()
-    private var latestVersion: String?
-    private var latestAssetURL: URL?
-    private var selfUpdating = false
     private var appsDirSource: DispatchSourceFileSystemObject?
     private var repatchDebounce: DispatchWorkItem?
-    private var lastUpdateCheck = Date.distantPast
+#if canImport(Sparkle)
+    private lazy var updaterController = SPUStandardUpdaterController(
+        startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil
+    )
+#endif
 
     private var autoRepatchEnabled: Bool {
         get { UserDefaults.standard.object(forKey: "autoRepatch") as? Bool ?? true }
@@ -133,31 +139,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // upgrades from a shell-function-only version heal themselves.
         DispatchQueue.global(qos: .utility).async { self.runCLI(["shims"]) }
 
-        // Self-update check: shortly after launch, then every 6 hours.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { self.checkForSelfUpdate() }
-        Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in self.checkForSelfUpdate() }
+#if canImport(Sparkle)
+        // Sparkle owns automatic scheduling and signature verification. Both
+        // automatic and manual checks obtain their feed from the delegate below.
+        _ = updaterController
+        updaterController.updater.automaticallyChecksForUpdates = true
+#endif
     }
 
     // MARK: - Menu construction (rebuilt each time it opens)
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        // Opportunistic release check on menu open (async; throttled to 5 min)
-        // so updates surface within one interaction of shipping, not one timer cycle.
-        if Date().timeIntervalSince(lastUpdateCheck) > 300 {
-            lastUpdateCheck = Date()
-            checkForSelfUpdate()
-        }
         menu.removeAllItems()
         let profiles = discoverProfiles()
         let claudeInstalled = fm.fileExists(atPath: claudeAppPath)
-
-        if let v = latestVersion, let _ = latestAssetURL, isNewer(v, than: currentVersion) {
-            let title = selfUpdating ? "Updating Claudes…" : "⬇️ Update Claudes to v\(v)"
-            let item = actionItem(title, #selector(selfUpdate(_:)), nil)
-            if selfUpdating { item.action = nil }
-            menu.addItem(item)
-            menu.addItem(.separator())
-        }
 
         if !claudeInstalled {
             menu.addItem(NSMenuItem(title: "⚠️ Claude Desktop not installed", action: nil, keyEquivalent: ""))
@@ -247,6 +242,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let toggle = actionItem("Auto-repatch after Claude updates", #selector(toggleAutoRepatch(_:)), nil)
         toggle.state = autoRepatchEnabled ? .on : .off
         menu.addItem(toggle)
+        let channelItem = NSMenuItem(title: "Update Channel", action: nil, keyEquivalent: "")
+        let channelMenu = NSMenu()
+        for channel in UpdateChannel.allCases {
+            let item = actionItem(channel.rawValue.capitalized, #selector(selectUpdateChannel(_:)), channel.rawValue)
+            item.state = channel == UpdateChannel.selected() ? .on : .off
+            channelMenu.addItem(item)
+        }
+        channelItem.submenu = channelMenu
+        menu.addItem(channelItem)
+        menu.addItem(actionItem("Check for Claudes Updates…", #selector(checkForUpdates(_:)), nil))
         let allTerms = installedTerminals()
         if allTerms.count > 1 {
             let termItem = NSMenuItem(title: "Open Sessions In", action: nil, keyEquivalent: "")
@@ -410,9 +415,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func updateStatusTitle(staleExists: Bool) {
-        let busy = !repatchInFlight.isEmpty || selfUpdating
-        let updateReady = latestVersion.map { isNewer($0, than: currentVersion) } ?? false
-        let suffix = busy ? "⏳" : (staleExists || updateReady ? "⬆️" : "")
+        let busy = !repatchInFlight.isEmpty
+        let suffix = busy ? "⏳" : (staleExists ? "⬆️" : "")
         if statusItem.button?.image != nil {
             statusItem.button?.title = suffix
         } else {
@@ -425,97 +429,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if autoRepatchEnabled { autoRepatchTick() }
     }
 
-    // MARK: - Self-update (GitHub releases)
+    // MARK: - Sparkle update channel
 
-    private func checkForSelfUpdate() {
-        var req = URLRequest(url: URL(string: repoAPI)!)
-        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        URLSession.shared.dataTask(with: req) { data, _, _ in
-            guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let tag = json["tag_name"] as? String,
-                  let assets = json["assets"] as? [[String: Any]],
-                  let zip = assets.first(where: { ($0["name"] as? String) == "Claudes.zip" }),
-                  let urlStr = zip["browser_download_url"] as? String,
-                  let url = URL(string: urlStr) else { return }
-            DispatchQueue.main.async {
-                self.latestVersion = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
-                self.latestAssetURL = url
-                self.autoRepatchTickStatusOnly()
-            }
-        }.resume()
+    @objc private func selectUpdateChannel(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let channel = UpdateChannel(rawValue: raw) else { return }
+        UserDefaults.standard.set(channel.rawValue, forKey: UpdateChannel.preferenceKey)
+#if canImport(Sparkle)
+        updaterController.updater.resetUpdateCycle()
+#endif
     }
 
-    private func isNewer(_ a: String, than b: String) -> Bool {
-        func parts(_ s: String) -> [Int] {
-            s.split(separator: ".").map { Int($0.prefix(while: { $0.isNumber })) ?? 0 }
-        }
-        let pa = parts(a), pb = parts(b)
-        for i in 0..<max(pa.count, pb.count) {
-            let x = i < pa.count ? pa[i] : 0
-            let y = i < pb.count ? pb[i] : 0
-            if x != y { return x > y }
-        }
-        return false
+    @objc private func checkForUpdates(_ sender: NSMenuItem) {
+#if canImport(Sparkle)
+        updaterController.checkForUpdates(sender)
+#else
+        alert("Updates unavailable", "This development build was compiled without Sparkle.")
+#endif
     }
 
-    @objc private func selfUpdate(_ sender: NSMenuItem) {
-        guard let url = latestAssetURL, !selfUpdating else { return }
-        selfUpdating = true
-        updateStatusTitle(staleExists: false)
-        URLSession.shared.downloadTask(with: url) { tmpURL, _, error in
-            DispatchQueue.main.async {
-                guard let tmpURL = tmpURL, error == nil else {
-                    self.selfUpdating = false
-                    self.alert("Update download failed", error?.localizedDescription ?? "Unknown error")
-                    return
-                }
-                self.installUpdate(from: tmpURL)
-            }
-        }.resume()
+#if canImport(Sparkle)
+    func feedURLString(for updater: SPUUpdater) -> String? {
+        Bundle.main.object(forInfoDictionaryKey: UpdateChannel.selected().feedInfoKey) as? String
     }
 
-    private func installUpdate(from zipURL: URL) {
-        let staging = NSTemporaryDirectory() + "claudes-update-\(ProcessInfo.processInfo.processIdentifier)"
-        let zipPath = staging + "/Claudes.zip"
-        do {
-            try fm.createDirectory(atPath: staging, withIntermediateDirectories: true)
-            if fm.fileExists(atPath: zipPath) { try fm.removeItem(atPath: zipPath) }
-            try fm.moveItem(at: zipURL, to: URL(fileURLWithPath: zipPath))
-        } catch {
-            selfUpdating = false
-            alert("Update failed", error.localizedDescription)
-            return
-        }
-
-        // Unzip, de-quarantine, then hand off to a detached script that swaps
-        // the bundle after this process exits and relaunches.
-        let script = """
-        #!/bin/zsh
-        set -e
-        cd "\(staging)"
-        /usr/bin/ditto -xk Claudes.zip extracted
-        [[ -d extracted/Claudes.app ]] || exit 1
-        /usr/bin/xattr -dr com.apple.quarantine extracted/Claudes.app 2>/dev/null || true
-        sleep 1
-        rm -rf "/Applications/Claudes.app"
-        /usr/bin/ditto extracted/Claudes.app "/Applications/Claudes.app"
-        /usr/bin/open "/Applications/Claudes.app"
-        rm -rf "\(staging)"
-        """
-        let scriptPath = staging + "/update.zsh"
-        do {
-            try script.write(toFile: scriptPath, atomically: true, encoding: .utf8)
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            task.arguments = [scriptPath]
-            try task.run()
-            NSApp.terminate(nil)
-        } catch {
-            selfUpdating = false
-            alert("Update failed", error.localizedDescription)
-        }
+    func allowedChannels(for updater: SPUUpdater) -> Set<String> {
+        [UpdateChannel.selected().rawValue]
     }
+
+    func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
+        alert("Update check failed", error.localizedDescription)
+    }
+#endif
 
     // MARK: - Actions
 

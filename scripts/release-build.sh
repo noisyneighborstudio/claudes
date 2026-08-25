@@ -3,22 +3,22 @@
 # in the keychain), notarize + staple when notary credentials are present,
 # and produce Claudes.zip for the GitHub release asset.
 set -euo pipefail
-ver=${1:?usage: release-build.sh <version>}
+ver=${1:?usage: release-build.sh <version> [build-version]}
+build_ver=${2:-1}
 cd "${0:A:h}/.."
 
-CLAUDES_VERSION=$ver ./tray/build.sh
+CLAUDES_VERSION=$ver CLAUDES_BUILD_VERSION=$build_ver CLAUDES_RELEASE_BUILD=1 ./tray/build.sh
 
-if [[ -n ${NOTARY_KEY_ID:-} && -n ${NOTARY_KEY_ISSUER:-} && -n ${NOTARY_KEY_P8:-} ]]; then
+if [[ -n ${NOTARY_KEY_ID:-} && -n ${NOTARY_KEY_ISSUER:-} && -n ${NOTARY_KEY_FILE:-} ]]; then
   echo "Notarizing…"
-  echo "$NOTARY_KEY_P8" > notary.p8
   ditto -c -k --keepParent tray/build/Claudes.app Claudes.zip
-  xcrun notarytool submit Claudes.zip --key notary.p8 \
+  xcrun notarytool submit Claudes.zip --key "$NOTARY_KEY_FILE" \
     --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_KEY_ISSUER" --wait
   xcrun stapler staple tray/build/Claudes.app
-  rm -f notary.p8 Claudes.zip
+  rm -f Claudes.zip
 else
-  echo "Notary credentials not set — skipping notarization (in-app self-update still works; direct downloads will hit Gatekeeper until secrets are added)."
+  echo "Notary configuration not present — skipping notarization."
 fi
 
 ditto -c -k --keepParent tray/build/Claudes.app Claudes.zip
-echo "Release artifact: Claudes.zip (v$ver)"
+echo "Release artifact: Claudes.zip (v$ver, build $build_ver)"
