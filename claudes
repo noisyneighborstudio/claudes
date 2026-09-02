@@ -7,13 +7,14 @@
 #   claudes use <Profile|Default>         switch the GLOBAL active profile
 #   claudes run <Profile|--next|--best> [--start-from-session=<id>] [args]
 #   claudes best                          per-profile usage (5h/7d windows)
-#   claudes new <Name>                    create a profile (app clone + config dir)
+#   claudes new <Name> [--cli-only]       create a profile (app clone + config dir)
 #   claudes delete <Name> [--everything] [--yes]
 #   claudes repatch [Name]                rebuild clone(s) after a Claude update
 #   claudes sessions [Profile|Default]    list Claude Code sessions
 #   claudes transfer <id> --to <Profile>|--next|--best [--from <Profile>]
 #   claudes desktop [Name|--next|--best]  open the desktop app
 #   claudes shims [--remove]              sync claude-as / claude-<profile> on PATH
+#   claudes app-path                      print the Claude Desktop bundle path
 #   claudes version
 #
 # Global switching: ~/.claude becomes a symlink into ~/.claude-profiles/, so
@@ -42,6 +43,25 @@ scripts_dir=$(dirname "$self")
 die() { echo "claudes: $*" >&2; exit 1; }
 
 lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+# Claude Desktop's bundle, wherever it actually lives. A per-user install lands
+# in ~/Applications, and the tray's "Locate Claude Desktop…" writes an explicit
+# path into the app's preferences — both are as valid as /Applications.
+# Prints nothing and returns 1 when Claude Desktop isn't installed.
+claude_app_path() {
+  if [ -n "${CLAUDES_CLAUDE_APP:-}" ]; then
+    [ -d "$CLAUDES_CLAUDE_APP" ] || die "CLAUDES_CLAUDE_APP is set but not a bundle: $CLAUDES_CLAUDE_APP"
+    echo "$CLAUDES_CLAUDE_APP"
+    return 0
+  fi
+  pref=$(defaults read dev.sethwebster.claudes claudeAppPath 2>/dev/null || true)
+  for p in "$pref" /Applications/Claude.app "$HOME/Applications/Claude.app"; do
+    if [ -n "$p" ] && [ -d "$p/Contents" ]; then echo "$p"; return 0; fi
+  done
+  found=$(mdfind "kMDItemCFBundleIdentifier == 'com.anthropic.claudefordesktop'" 2>/dev/null | head -1)
+  if [ -n "$found" ] && [ -d "$found/Contents" ]; then echo "$found"; return 0; fi
+  return 1
+}
 
 valid_profile_name() {
   [ -n "$1" ] || return 1
@@ -100,7 +120,8 @@ active_profile() {
 
 profile_running() {  # desktop app instance
   if [ "$1" = Default ]; then
-    pgrep -f "/Applications/Claude.app/Contents/MacOS/Claude" >/dev/null 2>&1
+    app=$(claude_app_path) || return 1
+    pgrep -f "$app/Contents/MacOS/Claude" >/dev/null 2>&1
   else
     pgrep -f "user-data-dir=$HOME/Library/Application Support/Claude-$1" >/dev/null 2>&1
   fi
@@ -407,8 +428,33 @@ sync_shims() {
 }
 
 cmd_new() {
-  [ $# -ge 1 ] || die "usage: claudes new <Name>"
-  "$scripts_dir/make-claude-profile.sh" "$1"
+  name="" cli_only=0
+  for arg in "$@"; do
+    case $arg in
+      --cli-only) cli_only=1 ;;
+      -*) die "unknown flag: $arg" ;;
+      *) name=$arg ;;
+    esac
+  done
+  [ -n "$name" ] || die "usage: claudes new <Name> [--cli-only]"
+
+  # --cli-only: a Claude Code profile with no desktop clone. The only thing a
+  # CLI profile needs is its config dir, so this works without Claude Desktop.
+  # Running `claudes new <Name>` later adds the desktop clone alongside it.
+  if [ "$cli_only" -eq 1 ]; then
+    valid_profile_name "$name" || die "profile name must be letters/numbers and not 'default': $name"
+    [ "$(lower "$name")" = as ] && die "profile name is reserved: $name"
+    cfg="$root/$name"
+    [ -d "$cfg" ] && die "profile '$name' already exists ($cfg)"
+    mkdir -p "$cfg"
+    sync_shims
+    echo "✓ Claude Code profile '$name' ready."
+    echo "  CLI:      claude-$(lower "$name")   (or CLAUDE_CONFIG_DIR=$cfg claude; run /login once)"
+    echo "  Desktop:  install Claude Desktop, then run 'claudes new $name' to add the app clone."
+    return 0
+  fi
+
+  "$scripts_dir/make-claude-profile.sh" "$name"
   sync_shims
 }
 
@@ -599,7 +645,8 @@ cmd_desktop() {
     name=$(resolve_profile "${1:-Default}") || die "no profile named '$1'"
   fi
   if [ "$name" = Default ]; then
-    open -a "/Applications/Claude.app"
+    app=$(claude_app_path) || die "Claude Desktop is not installed — get it from https://claude.ai/download"
+    open -a "$app"
   else
     open -a "/Applications/Claude-$name.app"
   fi
@@ -614,12 +661,16 @@ cmd_version() {
   fi
 }
 
+cmd_app_path() {
+  claude_app_path || die "Claude Desktop is not installed — get it from https://claude.ai/download"
+}
+
 cmd_profiles() {
   { echo Default; profile_names; } | sort -fu
 }
 
 cmd_help() {
-  sed -n '5,18p' "$self" | sed 's/^# \{0,3\}//'
+  sed -n '5,19p' "$self" | sed 's/^# \{0,3\}//'
 }
 
 cmd=${1:-help}
@@ -637,6 +688,7 @@ case $cmd in
   transfer) cmd_transfer "$@" ;;
   desktop)  cmd_desktop "$@" ;;
   shims)    cmd_shims "$@" ;;
+  app-path) cmd_app_path ;;
   profiles) cmd_profiles ;;
   version)  cmd_version ;;
   help|-h|--help) cmd_help ;;

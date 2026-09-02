@@ -139,7 +139,8 @@ Everything the tray does is also a command — the tray shells out to the same s
 | `claudes best`                   | Per-profile server-side usage (5h/7d windows)                                |
 | `claudes sessions [Profile]`     | List sessions (id · date · project · prompt)                                 |
 | `claudes transfer <id> --to <P>` | Move a session between profiles (`--next`/`--best` pick for you)             |
-| `claudes new <Name>`             | Create a profile                                                             |
+| `claudes new <Name>`             | Create a profile (`--cli-only` skips the desktop clone)                      |
+| `claudes app-path`               | Print where Claude Desktop was found                                         |
 | `claudes delete <Name>`          | Delete (`--everything` removes data + config)                                |
 | `claudes repatch [Name]`         | Rebuild clone(s) after a Claude update                                       |
 | `claudes desktop [Name\|--next\|--best]` | Open a profile's desktop app                                         |
@@ -154,7 +155,8 @@ Everything the tray does is also a command — the tray shells out to the same s
 
 - **Profiles at a glance** — 🟢 running, ✓ active
 - **Per profile** — Set as Active, open the desktop app, open a Claude Code terminal session (Terminal, iTerm2, Warp, Ghostty, kitty, Alacritty, WezTerm), **Transfer Session…**, reveal data dir, delete
-- **New Profile…** — clones and patches `Claude.app`, with progress in Terminal
+- **New Profile…** — clones and patches `Claude.app`, with progress in Terminal. No Claude Desktop? It becomes **New Profile (Claude Code only)…** and creates a CLI-only profile; install the desktop app later and create the profile again to add the clone
+- **Locate Claude Desktop…** — shown when the app isn't found. `/Applications` and `~/Applications` are checked automatically, so this is for anywhere else
 - **Auto-repatch** — detects Claude Desktop updates (version drift between the original and each clone) and silently rebuilds idle clones in the background; running ones are picked up after they quit. ⬆️ while an update is pending, ⏳ while rebuilding. Prefer manual? Toggle it off and use **Re-patch All**
 - **Automatic updates** — signed Sparkle updates on the Stable channel by default; choose Stable or Continuous from **Update Channel**, and use **Check for Claudes Updates…** at any time
 

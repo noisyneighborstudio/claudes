@@ -84,7 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, Update
     private let fm = FileManager.default
     private let home = NSHomeDirectory()
     private var configRoot: String { home + "/.claude-profiles" }
-    private let claudeAppPath = "/Applications/Claude.app"
+    private let claudeBundleID = "com.anthropic.claudefordesktop"
     private let newIssueURL = "https://github.com/noisyneighborstudio/claudes/issues/new"
 
     private var repatchInFlight = Set<String>()
@@ -108,6 +108,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, Update
             return r
         }
         return home + "/Development/Claudes"
+    }
+
+    // Claude Desktop is not always in /Applications: a per-user install lands in
+    // ~/Applications, and the user can point us at any bundle via "Locate Claude
+    // Desktop…". Clones carry a suffixed bundle id, so the base id never matches one.
+    private var claudeAppPath: String? {
+        if let saved = UserDefaults.standard.string(forKey: "claudeAppPath"),
+           fm.fileExists(atPath: saved + "/Contents") {
+            return saved
+        }
+        for candidate in ["/Applications/Claude.app", home + "/Applications/Claude.app"]
+        where fm.fileExists(atPath: candidate + "/Contents") {
+            return candidate
+        }
+        return NSWorkspace.shared.urlForApplication(withBundleIdentifier: claudeBundleID)?.path
     }
 
     private var currentVersion: String {
@@ -152,10 +167,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, Update
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let profiles = discoverProfiles()
-        let claudeInstalled = fm.fileExists(atPath: claudeAppPath)
+        let desktopPath = claudeAppPath
+        let claudeInstalled = desktopPath != nil
 
         if !claudeInstalled {
-            menu.addItem(NSMenuItem(title: "⚠️ Claude Desktop not installed", action: nil, keyEquivalent: ""))
+            menu.addItem(NSMenuItem(title: "⚠️ Claude Desktop not found — Claude Code profiles still work",
+                                    action: nil, keyEquivalent: ""))
+            menu.addItem(actionItem("Locate Claude Desktop…", #selector(locateClaude(_:)), nil))
             menu.addItem(actionItem("Download Claude Desktop…", #selector(downloadClaude(_:)), nil))
             menu.addItem(.separator())
         }
@@ -166,8 +184,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, Update
 
         let active = activeProfileName()
 
-        // Once profiles exist, the un-profiled original earns its own entry.
-        if !profiles.isEmpty && claudeInstalled {
+        // Once profiles exist, the un-profiled original earns its own entry — its
+        // CLI half exists whether or not the desktop app is installed.
+        if !profiles.isEmpty {
             let dot = isDefaultRunning() ? "🟢" : "⚪️"
             let item = NSMenuItem(title: "\(dot) Default", action: nil, keyEquivalent: "")
             item.state = active == "Default" ? .on : .off
@@ -176,7 +195,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, Update
                 sub.addItem(actionItem("Set as Active (Global)", #selector(setActiveDefault(_:)), nil))
                 sub.addItem(.separator())
             }
-            sub.addItem(actionItem("Open Desktop App", #selector(openDefaultDesktop(_:)), nil))
+            if claudeInstalled {
+                sub.addItem(actionItem("Open Desktop App", #selector(openDefaultDesktop(_:)), nil))
+            }
             sub.addItem(actionItem("Open Claude Code (\(preferredTerminal.name))", #selector(openDefaultTerminal(_:)), nil))
             let dTerms = installedTerminals()
             if dTerms.count > 1 {
@@ -235,8 +256,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, Update
         }
 
         menu.addItem(.separator())
+        // Without Claude Desktop there is nothing to clone, but a Claude Code
+        // profile is just a config dir — creating one must stay possible.
+        menu.addItem(actionItem(claudeInstalled ? "New Profile…" : "New Profile (Claude Code only)…",
+                                #selector(newProfile(_:)), nil))
         if claudeInstalled {
-            menu.addItem(actionItem("New Profile…", #selector(newProfile(_:)), nil))
             menu.addItem(actionItem("Re-patch All (after Claude update)", #selector(repatchAll(_:)), nil))
         }
         let toggle = actionItem("Auto-repatch after Claude updates", #selector(toggleAutoRepatch(_:)), nil)
@@ -368,7 +392,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, Update
 
     private func isStale(_ profile: Profile) -> Bool {
         guard profile.hasApp,
-              let src = bundleVersion(claudeAppPath),
+              let appPath = claudeAppPath,
+              let src = bundleVersion(appPath),
               let clone = bundleVersion("/Applications/Claude-\(profile.name).app") else { return false }
         return src != clone
     }
@@ -462,6 +487,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, Update
 #endif
 
     // MARK: - Actions
+
+    // The path is stored in this app's preferences; the claudes CLI reads the same
+    // key, so scripts and menu agree on where Claude Desktop lives.
+    @objc private func locateClaude(_ sender: NSMenuItem) {
+        let panel = NSOpenPanel()
+        panel.message = "Select Claude.app"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let path = url.path
+        guard let id = NSDictionary(contentsOfFile: path + "/Contents/Info.plist")?["CFBundleIdentifier"] as? String,
+              id == claudeBundleID else {
+            alert("Not Claude Desktop", "“\((path as NSString).lastPathComponent)” isn't the Claude Desktop app. Pick Claude.app — a profile clone (Claude-<Name>.app) won't do.")
+            return
+        }
+        UserDefaults.standard.set(path, forKey: "claudeAppPath")
+        autoRepatchTick()
+    }
 
     @objc private func downloadClaude(_ sender: NSMenuItem) {
         NSWorkspace.shared.open(URL(string: "https://claude.ai/download")!)
@@ -566,9 +612,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, Update
     }
 
     private func isDefaultRunning() -> Bool {
+        guard let appPath = claudeAppPath else { return false }
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        task.arguments = ["-f", claudeAppPath + "/Contents/MacOS/Claude"]
+        task.arguments = ["-f", appPath + "/Contents/MacOS/Claude"]
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
         do {
@@ -581,7 +628,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, Update
     }
 
     @objc private func openDefaultDesktop(_ sender: NSMenuItem) {
-        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: claudeAppPath),
+        guard let appPath = claudeAppPath else {
+            alert("Claude Desktop not found", "Install it from claude.ai/download, or point Claudes at it with “Locate Claude Desktop…”.")
+            return
+        }
+        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: appPath),
                                            configuration: NSWorkspace.OpenConfiguration())
     }
 
@@ -708,9 +759,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, Update
     }
 
     @objc private func newProfile(_ sender: NSMenuItem) {
+        let cliOnly = claudeAppPath == nil
         let alert = NSAlert()
-        alert.messageText = "New Claude profile"
-        alert.informativeText = "Name, letters/numbers only (e.g. Work). Clones Claude.app into an isolated instance with its own login, plus a Claude Code config dir."
+        alert.messageText = cliOnly ? "New Claude Code profile" : "New Claude profile"
+        alert.informativeText = cliOnly
+            ? "Name, letters/numbers only (e.g. Work). Creates a Claude Code config dir with its own login. Claude Desktop isn't installed, so there's no desktop app to clone — install it later and create the profile again to add one."
+            : "Name, letters/numbers only (e.g. Work). Clones Claude.app into an isolated instance with its own login, plus a Claude Code config dir."
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
         alert.accessoryView = field
         alert.addButton(withTitle: "Create")
@@ -730,6 +784,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, Update
         }
         if fm.fileExists(atPath: "/Applications/Claude-\(name).app") {
             self.alert("Profile exists", "Claude-\(name).app is already in /Applications. Pick another name, or delete the existing profile first.")
+            return
+        }
+        if cliOnly {
+            let r = runCLI(["new", name, "--cli-only"])
+            if r.status != 0 { self.alert("Couldn't create profile", r.output) }
             return
         }
         runInTerminal("\"\(scriptsDir)/claudes\" new \(name)")

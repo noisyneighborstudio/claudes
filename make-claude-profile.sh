@@ -10,12 +10,14 @@ name=${1:?usage: make-claude-profile.sh <Name>   (letters/numbers only, e.g. Wor
 [[ $name =~ ^[A-Za-z0-9]+$ ]] || die "Profile name must be letters/numbers only, got: $name"
 [[ ${name:l} != as && ${name:l} != default ]] || die "Profile name is reserved: $name"
 
-src="/Applications/Claude.app"
+# The bundle can live outside /Applications (per-user install, or a path the
+# tray was pointed at) — the claudes CLI owns that lookup.
+src=$("${0:A:h}/claudes" app-path 2>/dev/null) || \
+  die "Claude Desktop is not installed. Get it from https://claude.ai/download, or create a Claude Code-only profile: claudes new $name --cli-only"
 dst="/Applications/Claude-$name.app"
 data="$HOME/Library/Application Support/Claude-$name"
 cfg="$HOME/.claude-profiles/$name"
 
-[[ -d $src ]] || die "Claude Desktop is not installed. Get it from https://claude.ai/download first."
 [[ -f $src/Contents/Info.plist ]] || die "$src looks damaged (no Info.plist). Reinstall Claude Desktop."
 [[ -d $dst ]] && die "$dst already exists. Delete that profile first (Claudes menu → Delete Profile) or pick another name."
 [[ -w /Applications ]] || die "No write permission for /Applications. Run from an admin account."

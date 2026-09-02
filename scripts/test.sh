@@ -48,6 +48,28 @@ if ./make-claude-profile.sh As >/dev/null 2>&1; then
   exit 1
 fi
 
+grep -Fq 'New Profile (Claude Code only)' tray/main.swift
+grep -Fq 'locateClaude' tray/main.swift
+
+# Claude Desktop missing: cloning must fail loudly and point at --cli-only,
+# while a Claude Code-only profile is still creatable.
+missing_app="$test_root/no-claude/Claude.app"
+clone_error=$(CLAUDES_CLAUDE_APP="$missing_app" ./make-claude-profile.sh Work 2>&1 || true)
+case $clone_error in
+  *--cli-only*) ;;
+  *) echo "Clone without Claude Desktop did not suggest --cli-only: $clone_error" >&2; exit 1 ;;
+esac
+
+cli_home="$test_root/cli-home"
+mkdir -p "$cli_home"
+HOME="$cli_home" PATH="/usr/bin:/bin" ./claudes new Solo --cli-only >/dev/null 2>&1
+test -d "$cli_home/.claude-profiles/Solo"
+HOME="$cli_home" ./claudes profiles | grep -qx Solo
+if HOME="$cli_home" PATH="/usr/bin:/bin" ./claudes new Solo --cli-only >/dev/null 2>&1; then
+  echo "Duplicate --cli-only profile was accepted" >&2
+  exit 1
+fi
+
 home="$test_root/home"
 shim_bin="$home/.local/bin"
 foreign_bin="$test_root/foreign-bin"

@@ -6,7 +6,7 @@
 set -euo pipefail
 
 here=${0:A:h}
-[[ -d /Applications/Claude.app ]] || { echo "✗ Claude Desktop is not installed; nothing to repatch against." >&2; exit 1 }
+"$here/claudes" app-path >/dev/null 2>&1 || { echo "✗ Claude Desktop is not installed; nothing to repatch against." >&2; exit 1 }
 
 setopt null_glob
 if (( $# > 0 )); then
