@@ -20,7 +20,7 @@ jobs:
           fetch-depth: 0
       - name: Select isolated channel and version
         id: release
-        shell: zsh
+        shell: zsh -e {0}
         run: |
           set -euo pipefail
           case "$GITHUB_REF" in
@@ -80,9 +80,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          prerelease=(); [[ '${{ steps.release.outputs.channel }}' == continuous ]] && prerelease=(--prerelease)
+          prerelease=""
+          [[ '${{ steps.release.outputs.channel }}' == continuous ]] && prerelease=--prerelease
           gh release create '${{ steps.release.outputs.tag }}' '${{ steps.release.outputs.artifact }}' \
-            --title '${{ steps.release.outputs.channel }} ${{ steps.release.outputs.version }}' --target "$GITHUB_SHA" "${prerelease[@]}"
+            --title '${{ steps.release.outputs.channel }} ${{ steps.release.outputs.version }}' --target "$GITHUB_SHA" $prerelease
       - name: Publish only the selected appcast
         env:
           GH_TOKEN: ${{ github.token }}
