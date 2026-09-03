@@ -27,6 +27,16 @@ else
 fi
 
 codesign --verify --deep --strict --verbose=2 tray/build/Claudes.app
+
+# Every @rpath dependency must resolve inside the bundle. A missing rpath kills
+# the app in dyld before main(), which is how 0.10.1 shipped un-launchable.
+binary=tray/build/Claudes.app/Contents/MacOS/ClaudeTray
+otool -l "$binary" | grep -q '@executable_path/../Frameworks' \
+  || { echo "✗ $binary has no @executable_path/../Frameworks rpath" >&2; exit 1 }
+for dep in $(otool -L "$binary" | awk '/@rpath\//{print $1}'); do
+  [[ -f "tray/build/Claudes.app/Contents/Frameworks/${dep#@rpath/}" ]] \
+    || { echo "✗ unresolvable dependency: $dep" >&2; exit 1 }
+done
 if [[ -n ${NOTARY_KEY:-} ]]; then
   xcrun stapler validate tray/build/Claudes.app
 fi

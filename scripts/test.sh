@@ -45,6 +45,8 @@ grep -Fq 'release-prepare.sh ${nextRelease.version}' .releaserc.json
 grep -Fq 'publish-appcast.sh ${nextRelease.version} ${nextRelease.gitTag}' .releaserc.json
 grep -Fq 'un-notarized (install.sh clears quarantine' scripts/release-prepare.sh
 grep -Fq 'cp Claudes.zip "Claudes-${channel}-${version}.zip"' scripts/release-prepare.sh
+grep -Fq 'unresolvable dependency' scripts/release-prepare.sh
+grep -Fq '@executable_path/../Frameworks' Package.swift
 grep -Fq 'push origin HEAD:appcasts' scripts/publish-appcast.sh
 grep -Fq 'allowedChannels' tray/main.swift
 grep -Fq 'didAbortWithError' tray/main.swift
