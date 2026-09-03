@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
 <channel><title>Claudes Updates</title><item>
-<title>Claudes 0.0.14-continuous.1ab2119</title><pubDate>Thu, 03 Sep 2026 05:19:06 +0000</pubDate>
+<title>Claudes 0.0.15-continuous.7621e3f</title><pubDate>Thu, 03 Sep 2026 05:21:58 +0000</pubDate>
 <sparkle:channel>continuous</sparkle:channel>
-<enclosure url="https://github.com/noisyneighborstudio/claudes/releases/download/continuous-1ab2119415d2d7d4677d09512d96e9530ec81480-33718305360-1/Claudes-continuous-1ab2119415d2-33718305360-1.zip" sparkle:version="33718305360.1" sparkle:shortVersionString="0.0.14-continuous.1ab2119" length="3005491" type="application/octet-stream" sparkle:edSignature="sPdXQld448Gd/oMPZz1TDrTwEBSlsd9h61r5b8s9paIVapUgxEFftbDYkZce8oLfAr3mv9+CXM2e0VNAcFMABw=="/>
+<enclosure url="https://github.com/noisyneighborstudio/claudes/releases/download/continuous-7621e3fa5004f7204d8ec37d184c5484e0a81065-33718507756-1/Claudes-continuous-7621e3fa5004-33718507756-1.zip" sparkle:version="33718507756.1" sparkle:shortVersionString="0.0.15-continuous.7621e3f" length="3005479" type="application/octet-stream" sparkle:edSignature="JsI8sGD5Tj9sz7ppoYS5Pm37bT7CRuJpXQJBRPpUOXbR/YzrT7o43JHZfGDzJ7rzUSKYpSE6rEaGNysnI9n2BA=="/>
 </item></channel></rss>
