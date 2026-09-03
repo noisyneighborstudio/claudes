@@ -1,15 +1,19 @@
 {
-  "branches": ["main"],
+  "branches": ["release", { "name": "main", "prerelease": "continuous" }],
   "plugins": [
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
     ["@semantic-release/exec", {
-      "prepareCmd": "./scripts/release-build.sh ${nextRelease.version}"
+      "prepareCmd": "./scripts/release-prepare.sh ${nextRelease.version}"
     }],
     ["@semantic-release/github", {
       "assets": [
-        { "path": "Claudes.zip", "name": "Claudes.zip", "label": "Claudes.app (zip)" }
+        { "path": "Claudes.zip", "name": "Claudes.zip", "label": "Claudes.app (zip)" },
+        { "path": "Claudes-*-*.zip", "label": "Sparkle update archive" }
       ]
+    }],
+    ["@semantic-release/exec", {
+      "publishCmd": "./scripts/publish-appcast.sh ${nextRelease.version} ${nextRelease.gitTag}"
     }]
   ]
 }

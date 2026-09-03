@@ -11,7 +11,8 @@ export CLANG_MODULE_CACHE_PATH="$test_root/cache/clang"
 export SWIFT_MODULECACHE_PATH="$test_root/cache/swift"
 
 sh -n claudes shell/claude-as
-zsh -n install.sh uninstall.sh make-claude-profile.sh tray/build.sh scripts/release-build.sh scripts/make-appcast.sh shell/claudes.zsh
+zsh -n install.sh uninstall.sh make-claude-profile.sh tray/build.sh scripts/release-build.sh scripts/make-appcast.sh \
+  scripts/release-prepare.sh scripts/publish-appcast.sh shell/claudes.zsh
 bash -n shell/claudes.bash
 command -v fish >/dev/null && fish -n shell/claudes.fish
 swiftc -typecheck tray/main.swift tray/UpdateChannel.swift
@@ -37,9 +38,14 @@ fi
 grep -Fq 'branches: [main, release]' .github/workflows/release.yml
 grep -Fq 'refs/heads/main) channel=continuous' .github/workflows/release.yml
 grep -Fq 'refs/heads/release) channel=stable' .github/workflows/release.yml
-grep -Fq 'un-notarized (install.sh clears quarantine' .github/workflows/release.yml
-grep -Fq "cp '\${{ steps.release.outputs.artifact }}' Claudes.zip" .github/workflows/release.yml
-grep -Fq 'push origin HEAD:appcasts' .github/workflows/release.yml
+grep -Fq 'npx semantic-release' .github/workflows/release.yml
+# semantic-release owns the version: prerelease on main, stable on release.
+grep -Fq '"branches": ["release", { "name": "main", "prerelease": "continuous" }]' .releaserc.json
+grep -Fq 'release-prepare.sh ${nextRelease.version}' .releaserc.json
+grep -Fq 'publish-appcast.sh ${nextRelease.version} ${nextRelease.gitTag}' .releaserc.json
+grep -Fq 'un-notarized (install.sh clears quarantine' scripts/release-prepare.sh
+grep -Fq 'cp Claudes.zip "Claudes-${channel}-${version}.zip"' scripts/release-prepare.sh
+grep -Fq 'push origin HEAD:appcasts' scripts/publish-appcast.sh
 grep -Fq 'allowedChannels' tray/main.swift
 grep -Fq 'didAbortWithError' tray/main.swift
 grep -Fq 'UpdateChannel.preferenceKey' tray/main.swift
