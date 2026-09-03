@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
 <channel><title>Claudes Updates</title><item>
-<title>Claudes 0.10.2</title><pubDate>Thu, 03 Sep 2026 06:09:37 +0000</pubDate>
+<title>Claudes 0.10.3</title><pubDate>Thu, 03 Sep 2026 06:17:44 +0000</pubDate>
 <sparkle:channel>stable</sparkle:channel>
-<enclosure url="https://github.com/noisyneighborstudio/claudes/releases/download/v0.10.2/Claudes-stable-0.10.2.zip" sparkle:version="33721891459" sparkle:shortVersionString="0.10.2" length="3005506" type="application/octet-stream" sparkle:edSignature="gGSGqrmfwetoUqSjRNeZtyhcJP6zhRIg9JX+zvpQ52Va+CQbMT7m22eyd/CxVHlV1L3QfUKU6Gq3DevsubuXCg=="/>
+<enclosure url="https://github.com/noisyneighborstudio/claudes/releases/download/v0.10.3/Claudes-stable-0.10.3.zip" sparkle:version="33722463045" sparkle:shortVersionString="0.10.3" length="3026576" type="application/octet-stream" sparkle:edSignature="5lu+pjSF4fShhe9jmuWiq7rUfZcbfxhiaISyRVtvoH9LUSLFW4uDeaBrzDHdi+7GAPDjXAV/FKaSWrrUTCsnBw=="/>
 </item></channel></rss>
