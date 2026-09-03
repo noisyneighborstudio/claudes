@@ -85,7 +85,7 @@ jobs:
           key="$RUNNER_TEMP/sparkle-private-key"; umask 077; printf '%s' "$SPARKLE_PRIVATE_KEY" > "$key"
           result=$(.build/artifacts/sparkle/Sparkle/bin/sign_update -f "$key" '${{ steps.release.outputs.artifact }}')
           signature=${result#*sparkle:edSignature=\"}; signature=${signature%%\"*}
-          test -n "$signature"; print "signature=$signature" >> "$GITHUB_OUTPUT"
+          test -n "$signature"; echo "signature=$signature" >> "$GITHUB_OUTPUT"
         id: sparkle
       - name: Publish channel artifact
         env:
