@@ -52,11 +52,18 @@ rm -rf "${iconset:h}"
 identity=${CLAUDES_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Developer ID Application/{print $2; exit}')}
 if [[ -n ${identity:-} ]]; then
   echo "Signing with: $identity"
-  codesign --force --options runtime --sign "$identity" "$app/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate"
-  codesign --force --options runtime --sign "$identity" "$app/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app"
-  codesign --force --options runtime --sign "$identity" "$app/Contents/Frameworks/Sparkle.framework"
-  codesign --force --options runtime --sign "$identity" "$app/Contents/Resources/icon-badge"
-  codesign --force --options runtime --entitlements entitlements.plist --sign "$identity" "$app"
+  sparkle="$app/Contents/Frameworks/Sparkle.framework/Versions/B"
+  for nested in \
+    "$sparkle/XPCServices/Downloader.xpc" \
+    "$sparkle/XPCServices/Installer.xpc" \
+    "$sparkle/Autoupdate" \
+    "$sparkle/Updater.app" \
+    "$app/Contents/Frameworks/Sparkle.framework" \
+    "$app/Contents/Resources/icon-badge"
+  do
+    codesign --force --timestamp --options runtime --sign "$identity" "$nested"
+  done
+  codesign --force --timestamp --options runtime --entitlements entitlements.plist --sign "$identity" "$app"
 else
   echo "No Developer ID identity found — signing ad-hoc (fine for local use)."
   codesign --force -s - "$app/Contents/Frameworks/Sparkle.framework"
