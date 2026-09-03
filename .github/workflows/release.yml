@@ -57,13 +57,25 @@ jobs:
           NOTARY_KEY: ${{ secrets.NOTARY_KEY_P8 }}
         run: |
           set -euo pipefail
-          test -n "$NOTARY_KEY"; test -n "$NOTARY_KEY_ID"; test -n "$NOTARY_KEY_ISSUER"
           test -n "$CLAUDES_SIGN_IDENTITY"; test -n "$CLAUDES_SPARKLE_PUBLIC_KEY"
-          notary="$RUNNER_TEMP/notary.p8"; umask 077; printf '%s' "$NOTARY_KEY" > "$notary"
-          NOTARY_KEY_FILE="$notary" ./scripts/release-build.sh '${{ steps.release.outputs.version }}' '${{ steps.release.outputs.build }}'
+          # Stable is what users get by default, so it must be notarized. A
+          # continuous prerelease may ship Developer ID signed only, and says so.
+          if [[ -n "$NOTARY_KEY" ]]; then
+            test -n "$NOTARY_KEY_ID"; test -n "$NOTARY_KEY_ISSUER"
+            notary="$RUNNER_TEMP/notary.p8"; umask 077; printf '%s' "$NOTARY_KEY" > "$notary"
+            NOTARY_KEY_FILE="$notary" ./scripts/release-build.sh '${{ steps.release.outputs.version }}' '${{ steps.release.outputs.build }}'
+          elif [[ '${{ steps.release.outputs.channel }}' == continuous ]]; then
+            echo "::warning::NOTARY_KEY_P8 is not set — publishing an un-notarized continuous build"
+            ./scripts/release-build.sh '${{ steps.release.outputs.version }}' '${{ steps.release.outputs.build }}'
+          else
+            echo "::error::stable releases must be notarized; set NOTARY_KEY_P8, NOTARY_KEY_ID, NOTARY_KEY_ISSUER"
+            exit 1
+          fi
           mv Claudes.zip '${{ steps.release.outputs.artifact }}'
           codesign --verify --deep --strict --verbose=2 tray/build/Claudes.app
-          xcrun stapler validate tray/build/Claudes.app
+          if [[ -n "$NOTARY_KEY" ]]; then
+            xcrun stapler validate tray/build/Claudes.app
+          fi
       - name: Sign update archive
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
