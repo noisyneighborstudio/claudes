@@ -31,6 +31,8 @@ if [[ -n ${NOTARY_KEY:-} ]]; then
   xcrun stapler validate tray/build/Claudes.app
 fi
 
+setopt null_glob   # zsh errors on a non-matching glob, even for rm -f
 rm -f Claudes-*-*.zip
+unsetopt null_glob
 cp Claudes.zip "Claudes-${channel}-${version}.zip"
 echo "✓ Prepared $version ($channel, build $build)"
