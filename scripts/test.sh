@@ -37,7 +37,8 @@ fi
 grep -Fq 'branches: [main, release]' .github/workflows/release.yml
 grep -Fq 'refs/heads/main) channel=continuous' .github/workflows/release.yml
 grep -Fq 'refs/heads/release) channel=stable' .github/workflows/release.yml
-grep -Fq 'stable releases must be notarized' .github/workflows/release.yml
+grep -Fq 'un-notarized (install.sh clears quarantine' .github/workflows/release.yml
+grep -Fq "cp '\${{ steps.release.outputs.artifact }}' Claudes.zip" .github/workflows/release.yml
 grep -Fq 'push origin HEAD:appcasts' .github/workflows/release.yml
 grep -Fq 'allowedChannels' tray/main.swift
 grep -Fq 'didAbortWithError' tray/main.swift

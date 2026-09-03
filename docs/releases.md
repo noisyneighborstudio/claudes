@@ -4,7 +4,7 @@ Claudes uses Sparkle 2 for signed automatic and manual updates. Every push to `m
 
 Configure these GitHub Actions secrets (never commit their values): `DEVELOPER_ID_CERTIFICATE_BASE64`, `DEVELOPER_ID_CERTIFICATE_PASSWORD`, `BUILD_KEYCHAIN_PASSWORD`, `DEVELOPER_ID_APPLICATION`, `NOTARY_KEY_ID`, `NOTARY_KEY_ISSUER`, `NOTARY_KEY_P8`, `SPARKLE_PUBLIC_KEY`, and `SPARKLE_PRIVATE_KEY`. The workflow keeps key material in runner-temporary files, removes it in an `always()` step, Developer ID signs the app, submits it to Apple notarization, staples it, and signs the final archive with Sparkle EdDSA before publication.
 
-Notarization is required for `stable` and optional for `continuous`: a run without `NOTARY_KEY_P8` publishes a Developer ID signed prerelease with a warning, and fails outright on the stable branch.
+Notarization runs when `NOTARY_KEY_P8`, `NOTARY_KEY_ID`, and `NOTARY_KEY_ISSUER` are set; without them the run publishes a Developer ID signed but un-notarized build and logs a warning. Each release carries the artifact twice: the unique channel-stamped name the appcast enclosure points at, and `Claudes.zip`, which `install.sh` resolves from the latest release.
 
 The app defaults to Stable when no preference exists. **Update Channel** in the menu persists Stable or Continuous in `UserDefaults`; Sparkle uses that same selection for scheduled and user-initiated checks. Each appcast item carries a matching `sparkle:channel`, and the updater delegate allows only that channel. Sparkle rejects malformed feeds, incompatible channels, and archives without a valid signature; errors are reported without changing feeds or replacing the installed app.
 

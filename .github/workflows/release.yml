@@ -64,12 +64,9 @@ jobs:
             test -n "$NOTARY_KEY_ID"; test -n "$NOTARY_KEY_ISSUER"
             notary="$RUNNER_TEMP/notary.p8"; umask 077; printf '%s' "$NOTARY_KEY" > "$notary"
             NOTARY_KEY_FILE="$notary" ./scripts/release-build.sh '${{ steps.release.outputs.version }}' '${{ steps.release.outputs.build }}'
-          elif [[ '${{ steps.release.outputs.channel }}' == continuous ]]; then
-            echo "::warning::NOTARY_KEY_P8 is not set — publishing an un-notarized continuous build"
-            ./scripts/release-build.sh '${{ steps.release.outputs.version }}' '${{ steps.release.outputs.build }}'
           else
-            echo "::error::stable releases must be notarized; set NOTARY_KEY_P8, NOTARY_KEY_ID, NOTARY_KEY_ISSUER"
-            exit 1
+            echo "::warning::NOTARY_KEY_P8 is not set — publishing signed but un-notarized (install.sh clears quarantine; browser downloads will be blocked by Gatekeeper)"
+            ./scripts/release-build.sh '${{ steps.release.outputs.version }}' '${{ steps.release.outputs.build }}'
           fi
           mv Claudes.zip '${{ steps.release.outputs.artifact }}'
           codesign --verify --deep --strict --verbose=2 tray/build/Claudes.app
@@ -94,7 +91,8 @@ jobs:
           set -euo pipefail
           prerelease=""
           [[ '${{ steps.release.outputs.channel }}' == continuous ]] && prerelease=--prerelease
-          gh release create '${{ steps.release.outputs.tag }}' '${{ steps.release.outputs.artifact }}' \
+          cp '${{ steps.release.outputs.artifact }}' Claudes.zip
+          gh release create '${{ steps.release.outputs.tag }}' '${{ steps.release.outputs.artifact }}' Claudes.zip \
             --title '${{ steps.release.outputs.channel }} ${{ steps.release.outputs.version }}' --target "$GITHUB_SHA" $prerelease
       - name: Publish only the selected appcast
         env:
