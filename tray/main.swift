@@ -481,9 +481,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, Update
         [UpdateChannel.selected().rawValue]
     }
 
-    func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
-        alert("Update check failed", error.localizedDescription)
-    }
+    // No didAbortWithError here on purpose. Sparkle aborts the driver for every
+    // terminal outcome, including SUNoUpdateError — the ordinary "already on the
+    // newest build" result of a scheduled check — so alerting from that callback
+    // reports a routine check as a failure. Sparkle's standard user driver
+    // already presents real errors for user-initiated checks and stays silent
+    // for background ones.
 #endif
 
     // MARK: - Actions

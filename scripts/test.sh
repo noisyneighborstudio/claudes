@@ -49,7 +49,12 @@ grep -Fq 'unresolvable dependency' scripts/release-prepare.sh
 grep -Fq '@executable_path/../Frameworks' Package.swift
 grep -Fq 'push origin HEAD:appcasts' scripts/publish-appcast.sh
 grep -Fq 'allowedChannels' tray/main.swift
-grep -Fq 'didAbortWithError' tray/main.swift
+# Sparkle aborts the driver with SUNoUpdateError on every "nothing newer" check,
+# so a didAbortWithError alert turns each scheduled check into a failure popup.
+if grep -Fq 'func updater(_ updater: SPUUpdater, didAbortWithError' tray/main.swift; then
+  echo "didAbortWithError alerts on routine no-update checks" >&2
+  exit 1
+fi
 grep -Fq 'UpdateChannel.preferenceKey' tray/main.swift
 grep -Fq 'defaults to Stable' docs/releases.md
 
